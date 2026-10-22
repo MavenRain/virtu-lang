@@ -1,1 +1,1 @@
-def x : Text := "bolt"
+def x : Text := 'bolt'

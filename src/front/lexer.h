@@ -16,13 +16,23 @@ typedef enum {
   TOK_FATARROW, /* => */
   TOK_STAR,
   TOK_BAR,
+  TOK_AT,       /* @ */
+  TOK_TILDE,    /* ~ */
+  TOK_MEET,     /* /\ */
+  TOK_JOIN,     /* \/ */
+  TOK_LBRACKET, /* [ */
+  TOK_RBRACKET, /* ] */
+  TOK_COMMA,
   TOK_KW_DEF,
   TOK_KW_REC,
   TOK_KW_FUN,
   TOK_KW_FAMILY,
   TOK_KW_AXIOM,
   TOK_KW_TYPE,
-  TOK_KW_SIGMA
+  TOK_KW_SIGMA,
+  TOK_KW_AND,
+  TOK_KW_ELIM,
+  TOK_KW_COFAMILY
 } TokKind;
 
 typedef struct {

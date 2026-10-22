@@ -1,0 +1,2 @@
+-- finCase needs n cases: finCase 3 k has 2 cases, not 3.
+def bad : Fin 3 -> Nat := fun (k : Fin 3) => finCase 3 k 0 1

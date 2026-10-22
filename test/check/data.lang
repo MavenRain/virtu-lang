@@ -1,1 +1,1 @@
-family Coin := heads | tails
+family Side := heads | tails

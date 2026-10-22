@@ -1,0 +1,22 @@
+-- A mutual block (S2, Q1 and Q5 (a)): Charter R and Ratified R. Ratified
+-- is indexed by Charter, and adopt takes a Ratified field. A block fold
+-- takes one target per sort, the Charter cases in slot order, the
+-- Ratified case, then the value. The adoptTwice case is a constant path:
+-- both ends fold to the rule.
+def charterZero : Charter Nat := genesis Nat
+def charterOne : Charter Nat := adopt Nat (genesis Nat) (ratify Nat (genesis Nat) 7)
+def adopted : Charter Nat -> Nat :=
+  fun (c : Charter Nat) => fold Nat Nat 0
+    (fun (baseF : Nat) (ruleF : Nat) => ruleF)
+    (fun (baseF : Nat) (rule : Nat) => fun (i : I) => rule)
+    (fun (baseF : Nat) (rule : Nat) => rule) c
+def adoptedZero : Nat := adopted charterZero
+def adoptedOne : Nat := adopted charterOne
+def adoptedLaw : Nat := adopted (adoptTwice Nat (genesis Nat) 7 i1)
+-- The same block fold at a Ratified value gives its rule.
+def ratifiedRule : (c : Charter Nat) -> Ratified Nat c -> Nat :=
+  fun (c : Charter Nat) (r : Ratified Nat c) => fold Nat Nat 0
+    (fun (baseF : Nat) (ruleF : Nat) => ruleF)
+    (fun (baseF : Nat) (rule : Nat) => fun (i : I) => rule)
+    (fun (baseF : Nat) (rule : Nat) => rule) r
+def ratifiedOne : Path Nat (ratifiedRule (genesis Nat) (ratify Nat (genesis Nat) 7)) 7 := refl

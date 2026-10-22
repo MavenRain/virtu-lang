@@ -1,0 +1,2 @@
+-- Only domain/domain.lang can declare a cofamily (rule R1, S4 Q1).
+cofamily Nats := StreamF Nat

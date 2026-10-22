@@ -1,0 +1,56 @@
+-- The set truncation Trunc0 and the set quotient Quot (S4c, rulings R5,
+-- R6 and R8): a dimension-2 constructor (squash0, quotSquash) between any
+-- two paths with the same ends, a fold into Trunc0 B, and a quotient of
+-- Fin 4 by parity.
+-- A path constructor at a fresh variable is a JSON path object (rule 4),
+-- and each trunc0 point is {"trunc": a}.
+-- The fold sends trunc0 a to trunc0 (f a) and squash0 to squash0. The
+-- squash0 case has the type isSet (Trunc0 B).
+def map0 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> Trunc0 A -> Trunc0 B :=
+  fun (A : Type 0) (B : Type 0) (f : A -> B) (t : Trunc0 A) => fold (fun (a : A) => trunc0 B (f a))
+    (fun (x : Trunc0 B) (y : Trunc0 B) (p : Path (Trunc0 B) x y) (q : Path (Trunc0 B) x y) => fun (i : I) => fun (j : I) => squash0 B x y p q i j) t
+def map0At : Path (Trunc0 (Fin 2)) (map0 (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) (trunc0 (Fin 2) 0)) (trunc0 (Fin 2) 1) := refl
+-- refl and trans refl refl are not equal by conversion (there is no
+-- regularity), but squash0 gives a square between them.
+def sq0 : Path (Path (Trunc0 (Fin 2)) (trunc0 (Fin 2) 0) (trunc0 (Fin 2) 0)) refl
+  (trans (Trunc0 (Fin 2)) (trunc0 (Fin 2) 0) (trunc0 (Fin 2) 0) (trunc0 (Fin 2) 0) refl refl) :=
+  fun (i : I) => fun (j : I) => squash0 (Fin 2) (trunc0 (Fin 2) 0) (trunc0 (Fin 2) 0) refl
+    (trans (Trunc0 (Fin 2)) (trunc0 (Fin 2) 0) (trunc0 (Fin 2) 0) (trunc0 (Fin 2) 0) refl refl) i j
+-- The fold of a squash0 square folds the path fields too: p goes to
+-- fun k => map0 (p @ k).
+def map0Sq : (x : Trunc0 (Fin 2)) -> (p : Path (Trunc0 (Fin 2)) x x) ->
+  Path (Path (Path (Trunc0 (Fin 2)) (map0 (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) x) (map0 (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) x))
+      (fun (k : I) => map0 (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) (p @ k)) (fun (k : I) => map0 (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) (p @ k)))
+    (fun (i : I) => fun (j : I) => map0 (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) (squash0 (Fin 2) x x p p i j))
+    (fun (i : I) => fun (j : I) => squash0 (Fin 2) (map0 (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) x) (map0 (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) x)
+      (fun (k : I) => map0 (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) (p @ k)) (fun (k : I) => map0 (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) (p @ k)) i j) :=
+  fun (x : Trunc0 (Fin 2)) (p : Path (Trunc0 (Fin 2)) x x) => refl
+-- Parity on Fin 4: a + a is 0 for an even a and 2 for an odd a. Par
+-- relates two points with the same parity.
+def parity : Fin 4 -> Fin 4 := fun (a : Fin 4) => finAdd 4 a a
+def Par : Fin 4 -> Fin 4 -> Type 0 := fun (a : Fin 4) (b : Fin 4) => Path (Fin 4) (parity a) (parity b)
+def qPath : Path (Quot (Fin 4) Par) (quot (Fin 4) Par 0) (quot (Fin 4) Par 2) :=
+  fun (i : I) => quotEq (Fin 4) Par 0 2 refl i
+-- The fold of Quot into Trunc0 (Fin 4): the point case is trunc0 (parity
+-- a), the quotEq case is the path r, the quotSquash case is squash0.
+def toTrunc : Quot (Fin 4) Par -> Trunc0 (Fin 4) :=
+  fun (z : Quot (Fin 4) Par) => fold (fun (a : Fin 4) => trunc0 (Fin 4) (parity a))
+    (fun (a : Fin 4) (b : Fin 4) (r : Par a b) => fun (i : I) => trunc0 (Fin 4) (r @ i))
+    (fun (x : Trunc0 (Fin 4)) (y : Trunc0 (Fin 4)) (p : Path (Trunc0 (Fin 4)) x y) (q : Path (Trunc0 (Fin 4)) x y) => fun (i : I) => fun (j : I) => squash0 (Fin 4) x y p q i j) z
+def toTrunc2 : Path (Trunc0 (Fin 4)) (toTrunc (quot (Fin 4) Par 2)) (trunc0 (Fin 4) 0) := refl
+def toTrunc3 : Trunc0 (Fin 4) := toTrunc (quot (Fin 4) Par 3)
+-- The fold of qPath is the constant path at trunc0 (Fin 4) 0.
+def toTruncPath : Path (Path (Trunc0 (Fin 4)) (trunc0 (Fin 4) 0) (trunc0 (Fin 4) 0))
+  (fun (i : I) => toTrunc (quotEq (Fin 4) Par 0 2 refl i)) refl := refl
+-- The quotient of Fin 4 by the path relation Eq4 (S2 chunk C, the M7
+-- guest test). The fold of quotEq at a neutral interval has distinct
+-- ends: trunc0 a at i0 and trunc0 2 at i1. foldEqAt1 documents the i1
+-- end, which reduces before the fold.
+def Eq4 : Fin 4 -> Fin 4 -> Type 0 := fun (a : Fin 4) (b : Fin 4) => Path (Fin 4) a b
+def toTruncEq : Quot (Fin 4) Eq4 -> Trunc0 (Fin 4) :=
+  fun (z : Quot (Fin 4) Eq4) => fold (fun (a : Fin 4) => trunc0 (Fin 4) a)
+    (fun (a : Fin 4) (b : Fin 4) (r : Path (Fin 4) a b) => fun (i : I) => trunc0 (Fin 4) (r @ i))
+    (fun (x : Trunc0 (Fin 4)) (y : Trunc0 (Fin 4)) (p : Path (Trunc0 (Fin 4)) x y) (q : Path (Trunc0 (Fin 4)) x y) => fun (i : I) => fun (j : I) => squash0 (Fin 4) x y p q i j) z
+def foldEqAt : (a : Fin 4) -> (r : Path (Fin 4) a 2) -> Path (Trunc0 (Fin 4)) (trunc0 (Fin 4) a) (trunc0 (Fin 4) 2) :=
+  fun (a : Fin 4) (r : Path (Fin 4) a 2) => fun (i : I) => toTruncEq (quotEq (Fin 4) Eq4 a 2 r i)
+def foldEqAt1 : (a : Fin 4) -> (r : Path (Fin 4) a 2) -> Path (Trunc0 (Fin 4)) (foldEqAt a r @ i1) (trunc0 (Fin 4) 2) := fun (a : Fin 4) (r : Path (Fin 4) a 2) => refl

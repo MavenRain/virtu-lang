@@ -1,0 +1,5 @@
+-- elim needs an inductive family (S4 Q9). Stream is a cofamily: use out
+-- to get one layer, then eliminate the layer. This elim gives the motive,
+-- one case as for a family with one constructor, then the stream.
+def nats : Stream Nat := unfold (fun (n : Nat) => scons Nat Nat n (succ n)) 0
+def bad : Nat := elim (fun (s : Stream Nat) => Nat) (fun (h : Nat) (t : Stream Nat) => h) nats

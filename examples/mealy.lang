@@ -1,0 +1,17 @@
+-- Mealy machines (S4, Q10): Mealy I O is the cofamily of the layer
+-- MealyF I O. One layer gives an output and a function from an input to
+-- the next machine (a Pi chain field). counter is a machine that adds each
+-- input to its total and gives the total as its output. run gives the
+-- output before each input of a List, and final gives the last output.
+def counter : Nat -> Mealy Nat Nat :=
+  fun (n : Nat) => unfold (fun (k : Nat) => mealy Nat Nat Nat k (fun (i : Nat) => natAdd k i)) n
+def run : List Nat -> Mealy Nat Nat -> List Nat :=
+  fun (xs : List Nat) => fold (fun (x : Nat) (rest : Mealy Nat Nat -> List Nat) (m : Mealy Nat Nat) => fold (fun (o : Nat) (next : Nat -> Mealy Nat Nat) => cons o (rest (next x))) (out m)) (fun (m : Mealy Nat Nat) => nil) xs
+def final : List Nat -> Mealy Nat Nat -> Nat :=
+  fun (xs : List Nat) => fold (fun (x : Nat) (rest : Mealy Nat Nat -> Nat) (m : Mealy Nat Nat) => fold (fun (o : Nat) (next : Nat -> Mealy Nat Nat) => rest (next x)) (out m)) (fun (m : Mealy Nat Nat) => fold (fun (o : Nat) (next : Nat -> Mealy Nat Nat) => o) (out m)) xs
+def inputs : List Nat := cons 3 (cons 4 (cons 5 nil))
+def runCounter : List Nat := run inputs (counter 0)
+def finalCounter : Nat := final inputs (counter 0)
+def startAt : (n : Nat) -> Nat := fun (n : Nat) => final nil (counter n)
+def afterOne : (n : Nat) -> Nat := fun (n : Nat) => final (cons n nil) (counter 10)
+def runAgrees : Path Nat (final inputs (counter 0)) 12 := refl

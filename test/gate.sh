@@ -41,7 +41,7 @@ refusals test/check check
 
 # A refl refusal shows both normal forms.
 build/langc check test/check/bad-refl.lang 2>"$tmp/err" >/dev/null || true
-if ! rg -q -F 'the left side normalizes to 1201, the right side normalizes to 1200' "$tmp/err"; then
+if ! rg -q -F 'the path at i1 is 1201, but the type needs 1200' "$tmp/err"; then
   echo "FAIL bad-refl.lang: the message does not show both normal forms"
   fail=$((fail + 1))
 fi
@@ -131,6 +131,10 @@ build/langc build test/emit/trap.lang -o "$tmp/no.json" 2>/dev/null || true
 status=0
 build/langc build examples/formers.lang -x 2>/dev/null >/dev/null || status=$?
 [ "$status" -eq 2 ] || { echo "FAIL build usage: want exit 2, got $status"; fail=$((fail + 1)); }
+# The S1 removal of the json verb: `langc json` exits 2 with the usage.
+status=0
+build/langc json examples/formers.lang 2>/dev/null >/dev/null || status=$?
+[ "$status" -eq 2 ] || { echo "FAIL json verb: want exit 2, got $status"; fail=$((fail + 1)); }
 
 rm -rf "$tmp"
 

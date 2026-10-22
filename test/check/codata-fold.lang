@@ -1,0 +1,4 @@
+-- fold needs an inductive family (S4 Q9). Stream is a cofamily: use out
+-- to get one layer, then fold over the layer.
+def nats : Stream Nat := unfold (fun (n : Nat) => scons Nat Nat n (succ n)) 0
+def bad : Nat := fold Nat nats

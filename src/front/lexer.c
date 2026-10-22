@@ -12,6 +12,7 @@ typedef struct {
   size_t count;
   Diag *diag;
   const char *source;
+  Arena *arena;
 } Lexer;
 
 static const struct {
@@ -25,6 +26,9 @@ static const struct {
   {"axiom", TOK_KW_AXIOM},
   {"Type", TOK_KW_TYPE},
   {"Sigma", TOK_KW_SIGMA},
+  {"and", TOK_KW_AND},
+  {"elim", TOK_KW_ELIM},
+  {"cofamily", TOK_KW_COFAMILY},
 };
 
 const char *tok_kind_name(TokKind kind) {
@@ -40,6 +44,13 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_FATARROW: return "'=>'";
     case TOK_STAR: return "'*'";
     case TOK_BAR: return "'|'";
+    case TOK_AT: return "'@'";
+    case TOK_TILDE: return "'~'";
+    case TOK_MEET: return "'/\\'";
+    case TOK_JOIN: return "'\\/'";
+    case TOK_LBRACKET: return "'['";
+    case TOK_RBRACKET: return "']'";
+    case TOK_COMMA: return "','";
     case TOK_KW_DEF: return "'def'";
     case TOK_KW_REC: return "'rec'";
     case TOK_KW_FUN: return "'fun'";
@@ -47,6 +58,9 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_KW_AXIOM: return "'axiom'";
     case TOK_KW_TYPE: return "'Type'";
     case TOK_KW_SIGMA: return "'Sigma'";
+    case TOK_KW_AND: return "'and'";
+    case TOK_KW_ELIM: return "'elim'";
+    case TOK_KW_COFAMILY: return "'cofamily'";
   }
   return "a token";
 }
@@ -119,6 +133,8 @@ static int lex_ident(Lexer *lx) {
   return 1;
 }
 
+/* A Nat literal. A span at or above 2^64 gets nat = UINT64_MAX and keeps
+   its digits in text/len: the checker re-reads the span (S3). */
 static int lex_nat(Lexer *lx) {
   size_t start = lx->pos;
   int line = lx->line;
@@ -131,13 +147,10 @@ static int lex_nat(Lexer *lx) {
     value = value * 10u + digit;
     advance(lx, 1);
   }
-  if (overflow) {
-    return diag_fail(lx->diag, "LEX_NAT_RANGE", NULL, "%s:%d:%d: a Nat literal is larger than 2^64 - 1", lx->source, line, col);
-  }
   if (is_ident_start(peek(lx, 0))) {
     return diag_fail(lx->diag, "LEX_CHAR", NULL, "%s:%d:%d: a letter follows a Nat literal", lx->source, lx->line, lx->col);
   }
-  push(lx, TOK_NAT, start, line, col)->nat = value;
+  push(lx, TOK_NAT, start, line, col)->nat = overflow ? UINT64_MAX : value;
   return 1;
 }
 
@@ -154,6 +167,19 @@ static int lex_symbol(Lexer *lx) {
     case ')': kind = TOK_RPAREN; break;
     case '*': kind = TOK_STAR; break;
     case '|': kind = TOK_BAR; break;
+    case '@': kind = TOK_AT; break;
+    case '~': kind = TOK_TILDE; break;
+    case '[': kind = TOK_LBRACKET; break;
+    case ']': kind = TOK_RBRACKET; break;
+    case ',': kind = TOK_COMMA; break;
+    case '/':
+      kind = next == '\\' ? TOK_MEET : TOK_EOF;
+      width = 2;
+      break;
+    case '\\':
+      kind = next == '/' ? TOK_JOIN : TOK_EOF;
+      width = 2;
+      break;
     case ':':
       kind = next == '=' ? TOK_DEFINE : TOK_COLON;
       width = next == '=' ? 2 : 1;
@@ -183,6 +209,7 @@ int lex_source(Arena *arena, const char *source, const char *text, size_t len, T
   Lexer lx = {
     .text = text, .len = len, .pos = 0, .line = 1, .col = 1,
     .out = tokens, .count = 0, .diag = diag, .source = source,
+    .arena = arena,
   };
   for (;;) {
     skip_trivia(&lx);

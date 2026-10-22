@@ -9,8 +9,8 @@ are only the four classes of the request: `Avatar`, `VirtuCard`,
 `VirtualTerminal` and `VirtualItem`. `langc build` writes the JSON document
 of the final state of each instance that the program makes.
 `docs/PLAN.md` gives the reading of the request, the slices and the open
-items. This seed (S0) is the kit with the sample domain. The kernel and the
-domain come in the later slices.
+items. S1 ports the cubical kernel with test fixtures in the sample domain.
+The cell declarations, four base classes and state runner come in later slices.
 
 - `SPEC.md`: the specification. Fill each section.
 - `design/DESIGN.md`: the domain design. It is the only source of the core

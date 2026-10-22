@@ -1,0 +1,8 @@
+-- A fold over the block of Charter and Ratified needs a case for each
+-- constructor of each sort. This fold has no ratify case, so it has one
+-- argument too few (S2 chunk A, a missing case of the second sort).
+def f : Charter Nat -> Nat :=
+  fun (c : Charter Nat) => fold Nat Nat
+    0
+    (fun (b : Nat) (r : Nat) => succ b)
+    (fun (b : Nat) (w : Nat) => fun (i : I) => succ b) c

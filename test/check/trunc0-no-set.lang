@@ -1,0 +1,3 @@
+-- A fold of Trunc0 needs a case for each constructor: trunc0 and squash0.
+-- This fold into Nat has the point case only, so it has no isSet proof.
+def f : Trunc0 (Fin 2) -> Nat := fun (t : Trunc0 (Fin 2)) => fold (fun (a : Fin 2) => 0) t

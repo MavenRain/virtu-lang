@@ -1,0 +1,4 @@
+-- elim refuses a path case with the wrong ends (S7 B1, S2 chunk B): the
+-- vswap case must be a path from the vcons image at i0 to the vcons image
+-- at i1, both succ (succ ih), but this path is constant at 0.
+def bad : (n : Nat) -> Vec Nat n -> Nat := fun (n : Nat) (v : Vec Nat n) => elim (fun (k : Nat) (w : Vec Nat k) => Nat) 0 (fun (l : Nat) (h : Nat) (t : Vec Nat l) (ih : Nat) => succ ih) (fun (l : Nat) (x : Nat) (y : Nat) (r : Vec Nat l) (ih : Nat) => fun (i : I) => 0) v

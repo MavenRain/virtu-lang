@@ -1,0 +1,1 @@
+{"virtu-lang":1,"instances":[{"name":"inputs","type":"List Nat","value":[3,4,5]},{"name":"runCounter","type":"List Nat","value":[0,3,7]},{"name":"finalCounter","type":"Nat","value":12},{"name":"runAgrees","type":"PathP (fun _ => Nat) 12 12","value":{"refl":12}}]}

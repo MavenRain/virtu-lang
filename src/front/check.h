@@ -7,12 +7,13 @@
 
 #define ENTRY_PARAMS_MAX 16u
 
-/* An entry: a program definition of type Nat, Flag, or a function of Nat and
-   Flag arguments to a Nat or Flag result. */
+/* An entry: a program definition of a first-order type (Nat, or Fin n at a
+   literal n that is not 0), or a function of first-order arguments to a
+   first-order result. A parameter bound is 0 for Nat and n for Fin n: the
+   argument is a decimal below n. */
 typedef struct {
   uint32_t param_count;
-  int param_flag[ENTRY_PARAMS_MAX];
-  int result_flag;
+  uint64_t param_bound[ENTRY_PARAMS_MAX];
 } Entry;
 
 /* Checks the domain declarations, then the program, into M. Returns 1, or 0

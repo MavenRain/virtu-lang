@@ -1,0 +1,4 @@
+-- The step of unfold at Stream Nat must give one layer StreamF Nat S
+-- (S4 Q3). This step gives a full Stream Nat, not one layer.
+def nats : Stream Nat := unfold (fun (n : Nat) => scons Nat Nat n (succ n)) 0
+def bad : Stream Nat := unfold (fun (n : Nat) => nats) 0

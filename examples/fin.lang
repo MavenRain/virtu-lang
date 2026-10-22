@@ -1,0 +1,23 @@
+-- The finite case finCase n k c0 .. c(n-1) (S5a, ruling R12): the surface
+-- form of the finAll case term. The case count is n. When k is a variable,
+-- case ci is checked with k bound to the literal i, so a case can have a
+-- type that depends on k. A finAll normal form prints as finCase.
+-- A Fin 4 to Fin 2 map by parity.
+def parity2 : Fin 4 -> Fin 2 := fun (a : Fin 4) => finCase 4 a 0 1 0 1
+-- A dependent case: case 0 is a Nat, case 1 is a Fin 3.
+def depCase : (k : Fin 2) -> finCase 2 k Nat (Fin 3) := fun (k : Fin 2) => finCase 2 k 7 2
+-- The former emit refusals fin-case-type and fin-case-term: the finAll
+-- path p prints as a finCase term, so its law has a JSON type and value.
+def p : (k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k := fun k => refl
+def law : Path ((k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k) p p := refl
+def p2 : (k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k := fun k => refl
+def law2 : Path (Fin 2 -> Fin 2) (fun k => finAdd 2 k 0) (fun k => k) := funExt p2
+def valAt : Path Nat (finVal 5 3) 3 := refl
+def mulAt : Path (Fin 11) (finMul 11 3 7) 10 := refl
+-- 3 * 7 and 3 + 7 are both 10 in Fin 11, so mulAt does not tell finMul from
+-- finAdd (S5a mutant J6 survived it); 3 * 4 is 1 and 3 + 4 is 7.
+def mulAt2 : Path (Fin 11) (finMul 11 3 4) 1 := refl
+def subAt : Path (Fin 11) (finSub 11 2 5) 8 := refl
+def eqAt : Path Nat (boolIf Nat (natEq 3 3) 1 0) 1 := refl
+def neqAt : Path (Fin 2) (finEq 4 1 2) 0 := refl
+def succAt : Path Nat (succ 4) 5 := refl

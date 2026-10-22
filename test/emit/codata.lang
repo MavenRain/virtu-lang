@@ -1,0 +1,4 @@
+-- An instance that holds a cofamily value has no JSON form (S4 Q7). The
+-- def nats at the cofamily type is not an instance, thus it does not fail.
+def nats : Stream Nat := unfold (fun (n : Nat) => scons Nat Nat n (succ n)) 0
+def held : Prod (Stream Nat) Nat := pair nats 1

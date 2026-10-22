@@ -1,0 +1,14 @@
+-- An indexed higher inductive family (S2, Q1 and Q2 (a)): Vec A n, with
+-- the path constructor vswap between the two orders of a pair. A fold
+-- into Nat counts the entries. A recursive field arrives folded, an index
+-- field stays. The vswap case is a constant path: both ends count two.
+def vecTwo : Vec (Fin 2) 2 := vcons (Fin 2) 1 0 (vcons (Fin 2) 0 1 (vnil (Fin 2)))
+def vecSwapped : Vec (Fin 2) 2 := vswap (Fin 2) 0 0 1 (vnil (Fin 2)) i1
+def vecCount : (A : Type 0) -> (n : Nat) -> Vec A n -> Nat :=
+  fun (A : Type 0) (n : Nat) (v : Vec A n) => fold 0
+    (fun (consLen : Nat) (consHead : A) (tailCount : Nat) => succ tailCount)
+    (fun (swapLen : Nat) (swapX : A) (swapY : A) (restCount : Nat) => fun (i : I) => succ (succ restCount)) v
+def vecTwoCount : Nat := vecCount (Fin 2) 2 vecTwo
+def vecSwappedCount : Nat := vecCount (Fin 2) 2 vecSwapped
+-- The vswap line at a fresh interval is a path from vecTwo to vecSwapped.
+def vecSwapPath : Path (Vec (Fin 2) 2) vecTwo vecSwapped := fun (i : I) => vswap (Fin 2) 0 0 1 (vnil (Fin 2)) i

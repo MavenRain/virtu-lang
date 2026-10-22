@@ -7,12 +7,21 @@
 
 typedef enum {
   TERM_VAR,   /* name */
-  TERM_NAT,   /* nat */
+  TERM_NAT,   /* nat; name: the digit span when nat is UINT64_MAX (S3) */
   TERM_APP,   /* left applied to right */
   TERM_LAM,   /* fun (name : left) => right; left is NULL for a bare binder */
   TERM_PI,    /* (name : left) -> right; name is NULL for left -> right */
   TERM_SIGMA, /* Sigma (name : left) right, or (name : left) * right */
-  TERM_UNIV   /* Type nat */
+  TERM_UNIV,  /* Type nat */
+  TERM_PAPP,  /* left @ right: a path applied to an interval term */
+  TERM_INEG,  /* ~left */
+  TERM_IMEET, /* left /\ right */
+  TERM_IJOIN, /* left \/ right */
+  /* [ k1 -> t1, ... ]: a list of TERM_SYSTEM cells. Left is a TERM_BRANCH
+     (NULL in the cell of `[ ]`), right the next cell or NULL. Only the
+     body of a `fun` can be a system (the tube of hcomp, S2 R2 (a)). */
+  TERM_SYSTEM,
+  TERM_BRANCH /* left -> right: left the key, right the branch */
 } TermKind;
 
 typedef struct Term Term;
@@ -38,6 +47,12 @@ typedef struct {
   const char *name;
   const Field *fields;
   size_t field_count;
+  /* The result `: F params indices` after the fields of a constructor of an
+     indexed family (S6), or NULL. */
+  const Term *result;
+  /* The boundary `[ k1 -> t1, ... ]` of a path constructor (a TERM_SYSTEM
+     list), or NULL. */
+  const Term *boundary;
   int line;
   int col;
 } Ctor;
@@ -45,7 +60,8 @@ typedef struct {
 typedef enum {
   DECL_DEF,    /* def [rec] name : type := body */
   DECL_AXIOM,  /* axiom name : type */
-  DECL_FAMILY  /* family name params := ctor | ... */
+  DECL_FAMILY, /* family name params [: index] := ctor | ... [and ...] */
+  DECL_COFAMILY /* cofamily name params := body (S4): the body is the layer family */
 } DeclKind;
 
 /* A family is legal only in the domain file (rule R1). */
@@ -67,6 +83,14 @@ typedef struct {
   size_t param_count;
   const Ctor *ctors;
   size_t ctor_count;
+  /* The index telescope `: T1 -> ... -> Type 0` of a family (S6), or NULL
+     for a uniform family. */
+  const Term *index;
+  /* The block of the declaration (S6): the list position of its first sort
+     and the number of sorts. A declaration outside a block is a block of
+     one. */
+  size_t block_first;
+  size_t block_count;
 } Decl;
 
 /* Domain declarations come first, then the program. */

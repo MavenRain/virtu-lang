@@ -1,0 +1,2 @@
+-- out needs a value of a cofamily (S4 Q4). A Nat is not one.
+def bad : Nat := out 3

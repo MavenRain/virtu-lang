@@ -1,0 +1,4 @@
+-- A bare decision at unequal literals is inr of a refutation: a Sum that
+-- holds a function, which has no JSON form. Keep decisions inside Path
+-- typed defs in an example that must build (see examples/dec.lang).
+def d01 : Dec (Path (Fin 3) 0 1) := decEqFin 3 0 1

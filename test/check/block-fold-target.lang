@@ -1,0 +1,10 @@
+-- A fold over the block of Charter and Ratified needs one target type for
+-- each sort, then one case for each constructor, then the value. This fold
+-- gives only the target of Charter, so it has one argument too few (S2
+-- chunk A, the arity test of fold_block).
+def f : Charter Nat -> Nat :=
+  fun (c : Charter Nat) => fold Nat
+    0
+    (fun (b : Nat) (r : Nat) => succ b)
+    (fun (b : Nat) (w : Nat) => fun (i : I) => succ b)
+    (fun (b : Nat) (w : Nat) => b) c

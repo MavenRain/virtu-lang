@@ -25,7 +25,7 @@ No network access or package installation is needed.
 | Command | Result |
 |---|---|
 | `langc check PROG` | Checks the program. Prints `ok`. |
-| `langc eval PROG NAME [ARGS...]` | Applies the definition `NAME` to the literal arguments and prints the normal form. A Nat overflow prints `trap`. |
+| `langc eval PROG NAME [ARGS...]` | Applies the definition `NAME` to the literal arguments and prints the normal form. Nat arithmetic has no fixed bound. |
 | `langc build PROG [-o OUT]` | Checks the program, evaluates each instance and writes one JSON document to stdout, or to `OUT` |
 
 Exit 0 is success. Exit 1 is a refused program. Exit 2 is a usage or IO
@@ -48,11 +48,16 @@ data. These definitions are checked, but they are not instances:
 
 - functions (a Pi type, dependent or not);
 - types and families (a universe type);
-- equality proofs (an `Eq` type);
+- coinductive values (a `cofamily` type);
 - the definitions in `domain/domain.lang`.
 
+Paths are instances, including paths whose endpoints are functions or types.
+The `eval` command accepts decimal Nat arguments up to 2^64 - 1 and
+`Fin n` arguments below a literal nonzero `n` in that range. Larger Nats
+can still occur in source programs and evaluated results.
+
 `type` is the normal form of the definition type in source syntax, for
-example `Sigma (n : Nat) (Eq Nat n 1200)`. Binder names are freshened when
+example `Sigma (n : Nat) (PathP (fun _ => Nat) n 1200)`. Binder names are freshened when
 needed to preserve scope. The complete text must fit a 4096-byte buffer;
 the build refuses a type that exceeds this size or the printer depth of
 200, rather than emitting an abbreviated type.
@@ -62,30 +67,41 @@ starts again for each instance.
 
 | Type | JSON value |
 |---|---|
-| `Nat` | A number: the full unsigned 64-bit value in decimal |
-| `Flag` | `true` or `false` |
+| `Nat` | An unbounded natural number in decimal. JSON readers must preserve integer precision. |
+| `Fin n`, including `Bool := Fin 2` | A number below `n`; `false` is `0` and `true` is `1`. Literal bounds must be below 2^64. |
 | `Unit` | `{}` |
 | `Prod A B` | `{"first": a, "second": b}` |
 | `Sum A B` | `{"inl": a}` or `{"inr": b}` |
-| `Option A` | `null` or the value. When `A` is an `Option` or an `Eq` type, `some v` is `{"some": v}`. |
+| `Option A` | `null` or the value. When `A` is an `Option`, `some v` is `{"some": v}`. |
 | `List A` | An array |
 | `Sigma (x : A) B` | `{"witness": w, "payload": p}`. The payload type is `B` at the witness. |
-| `Eq A x y` | `null` |
+| `Path A x y`, `PathP L x y` | A structured path value, as described below |
 | A family whose constructors have no fields | The constructor name, as a string |
 | A family with one constructor | An object of the fields |
 | Any other family | `{"tag": "name", ...}` with the fields of that constructor |
 
 An indexed family uses the same rules. Its index is in `type` (for
-example `Lot 3`), not in `value`.
+example `Vec Nat 3`), not in `value`.
+
+A constant path is `{"refl": value}`, so `same` in
+`examples/equality.lang` emits `{"refl": 1200}`. A path in a universe
+with a finite literal carrier at its start emits `from`, `to` and a
+`transport` table. Paths in Sigma types emit component paths under
+`witness` and `payload`; paths of functions on a finite literal carrier
+emit a `paths` table. HIT paths can emit a `path` constructor and its
+`args`, or a formal `hcomp`. Other paths emit `from`, `to` and a source
+`term`. The point constructors `trunc0` and `trunc1` emit `{"trunc": value}`.
+See `examples/paths.lang`, `examples/univ.lang`, `examples/circle.lang`
+and their JSON goldens for these forms.
 
 `langc build` refuses a program with these codes:
 
 | Code | Cause |
 |---|---|
-| `JSON_VALUE` | An instance holds a function, a type or a stuck term |
+| `JSON_VALUE` | An instance holds a function, a type, a stuck term, a Glue element or a nested coinductive value |
 | `JSON_DEPTH` | An instance nests deeper than 2000 levels. A list spine does not count. |
-| `JSON_TYPE` | The complete instance type exceeds the printer's size or depth limit |
-| `EVAL_OVERFLOW` | A Nat operation in an instance overflows |
+| `JSON_TYPE` | An instance type or a path term exceeds the printer's size or depth limit |
+| `EVAL_FUEL` | Evaluation exhausts the step budget |
 
 The check and evaluation codes are the same as in `langc check` and
 `langc eval`. `test/parse`, `test/check` and `test/emit` hold a program
@@ -105,12 +121,12 @@ executable at build time. `domain/README.md` tells how to replace it.
 |---|---|---|
 | Source size | 1 MiB | `src/front/front.h:7` |
 | Arena | 1 GiB | `src/main.c:10` |
-| Parser nesting | 1000 | `src/front/parser.c:16` |
-| Checker depth | 2000 | `src/front/check.c:10` |
+| Parser nesting | 1000 | `src/front/parser.c` |
+| Checker depth | 2000 | `src/front/check.c` |
 | Evaluator depth | 2000 | `src/front/core.h:16` |
 | Evaluator fuel, for each instance | 20,000,000 steps | `src/front/core.h:17` |
 | JSON nesting | 2000 | `src/json.h:15` |
-| `type` text | 4096 bytes | `src/json.c:7` |
+| `type` text | 4096 bytes | `src/json.c` |
 | Type and normal-form printer depth | 200 | `src/front/eval.c` |
 
 ## Origin

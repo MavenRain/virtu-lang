@@ -7,11 +7,9 @@ Its definitions have DOMAIN origin. Program files cannot redefine them.
 `domain.lang` uses the program syntax, and it can also declare families:
 
 ```
-family Color := red | green | blue
-family Item := makeItem (itemColor : Color) (itemPrice : Nat) (itemCount : Nat)
-family Lot (size : Nat) := makeLot (lotPrice : Nat)
-def lineTotal : (item : Item) -> Nat :=
-  fun (item : Item) => natMul (itemPrice item) (itemCount item)
+family S1 := base | loop (i : I) [ ~i -> base, i -> base ]
+family StreamF (A : Type 0) (X : Type 0) := scons (shead : A) (stail : X)
+cofamily Stream (A : Type 0) := StreamF A
 ```
 
 - Only `domain.lang` can declare a family (rule R1). A program file that
@@ -20,10 +18,10 @@ def lineTotal : (item : Item) -> Nat :=
   becomes a core name (rule R4). A program cannot reuse it.
 - Constructor fields must have distinct names and cannot reuse their
   constructor's name. Collisions are refused with `REFUSE_NAME`.
-- A field name is also its projection: `itemPrice item`.
+- A field name is also its projection: `shead layer`.
 - `fold` takes one case for each constructor, in declaration order.
 - A family can have parameters, which give an indexed family (F15):
-  `Lot 3`.
+  `Vec Nat 3`.
 - A family lives in the largest universe of its fields. For example,
   `family U := makeU (decode : Type 0)` has type `Type 1`.
 - Domain definitions are not instances. They do not appear in the JSON

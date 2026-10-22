@@ -1,0 +1,4 @@
+-- Case 1 of depCase must be a Fin 3 term, here it is a Nat term. The
+-- finAll fallback checks the body again at each literal, so the code is
+-- FIN_CASE, with TYPE_MISMATCH at case 1 in the message.
+def bad : (k : Fin 2) -> finCase 2 k Nat (Fin 3) := fun (k : Fin 2) => finCase 2 k 2 (natAdd 1 1)

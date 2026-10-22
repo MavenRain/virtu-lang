@@ -1,0 +1,3 @@
+-- Only finCase 0 is ex falso. Fin 1 has one element, so finCase 1 k with
+-- no cases is a count mismatch: the checker must not take Fin 1 as empty.
+def bad : Fin 1 -> Nat := fun (k : Fin 1) => finCase 1 k

@@ -1,1 +1,1 @@
-{"virtu-lang":1,"instances":[{"name":"price","type":"Nat","value":1200},{"name":"cost","type":"Nat","value":1200}]}
+{"virtu-lang":1,"instances":[{"name":"price","type":"Nat","value":1200},{"name":"cost","type":"Nat","value":1200},{"name":"same","type":"PathP (fun _ => Nat) 1200 1200","value":{"refl":1200}},{"name":"back","type":"PathP (fun _ => Nat) 1200 1200","value":{"refl":1200}},{"name":"bumped","type":"PathP (fun _ => Nat) 1201 1201","value":{"refl":1201}},{"name":"start","type":"Nat","value":1200},{"name":"backEnd","type":"Nat","value":1200}]}

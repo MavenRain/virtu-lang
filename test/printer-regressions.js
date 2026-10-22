@@ -11,7 +11,7 @@ try {
   const source = path.join(tmp, "deep.lang");
   const functionType = names.map(n => `(${n} : Nat) -> `).join("") + "Nat";
   const functionBody = names.map(n => `fun ${n} => `).join("") + "n64";
-  const sigmaType = names.map(n => `Sigma (${n} : Nat) `).join("") + "(Eq Nat n64 n64)";
+  const sigmaType = names.map(n => `Sigma (${n} : Nat) `).join("") + "(Path Nat n64 n64)";
   const sigmaBody = names.reduce(body => `pack 0 (${body})`, "refl");
   fs.writeFileSync(source, `def deep : ${functionType} := ${functionBody}\n` +
     `def nested : ${sigmaType} := ${sigmaBody}\n`);
@@ -24,13 +24,13 @@ try {
   assert.equal(run("eval", source, "deep"), functionBody + "\n");
   const doc = JSON.parse(run("build", source));
   assert.equal(doc.instances.length, 1);
-  assert.match(doc.instances[0].type, /Eq Nat n64 n64/);
+  assert.match(doc.instances[0].type, /PathP \(fun _ => Nat\) n64 n64/);
   let value = doc.instances[0].value;
   for (const name of names) {
     assert.equal(value.witness, 0, name);
     value = value.payload;
   }
-  assert.equal(value, null);
+  assert.deepEqual(value, { refl: 0 });
   console.log("printer regressions: 2 checked");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

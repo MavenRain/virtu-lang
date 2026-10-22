@@ -1,0 +1,20 @@
+-- Colists (S4, Q10): Colist A is the cofamily of the layer ColistF A. A
+-- colist can stop (cnil) or go on for ever. fromList makes a finite colist
+-- from a List: its step gives the layer of the list and keeps the tail as
+-- the seed. upFrom makes an infinite colist. takeC gives at most n entries,
+-- thus it stops at the end of a finite colist. countThree counts them.
+def fromList : List Nat -> Colist Nat :=
+  fun (xs : List Nat) => unfold (fun (l : List Nat) => first (fold (fun (x : Nat) (acc : Prod (ColistF Nat (List Nat)) (List Nat)) => pair (ccons Nat (List Nat) x (second acc)) (cons x (second acc))) (pair (cnil Nat (List Nat)) ((fun (z : List Nat) => z) nil)) l)) xs
+def upFrom : Nat -> Colist Nat := fun (n : Nat) => unfold (fun (k : Nat) => ccons Nat Nat k (succ k)) n
+def takeC : Nat -> Colist Nat -> List Nat :=
+  fun (n : Nat) => fold (fun (rest : Colist Nat -> List Nat) (c : Colist Nat) => fold nil (fun (h : Nat) (t : Colist Nat) => cons h (rest t)) (out c)) (fun (c : Colist Nat) => nil) n
+def three : Colist Nat := fromList (cons 7 (cons 8 (cons 9 nil)))
+def emptyC : Colist Nat := fromList nil
+def listLen : List Nat -> Nat := fun (xs : List Nat) => fold (fun (x : Nat) (acc : Nat) => succ acc) 0 xs
+def takeTwo : List Nat := takeC 2 three
+def takeNine : List Nat := takeC 9 three
+def takeUp : List Nat := takeC 3 (upFrom 5)
+def countThree : (n : Nat) -> Nat := fun (n : Nat) => listLen (takeC n three)
+def takeEmpty : List Nat := takeC 2 emptyC
+def outEmpty : ColistF Nat (Colist Nat) := out emptyC
+def toEnd : Path (List Nat) (takeC 9 three) (cons 7 (cons 8 (cons 9 nil))) := refl

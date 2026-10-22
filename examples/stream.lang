@@ -1,0 +1,26 @@
+-- Streams (S4, Q1 to Q10): Stream A is the cofamily of the layer StreamF A
+-- in domain/domain.lang. `unfold g s` makes a stream from the step g and
+-- the seed s, and `out` gives one layer. headS and tailS fold over that
+-- layer. take folds over a Nat and gives the first n entries as a List.
+-- nth applies tailS n times and gives the head. A def at StreamF Nat
+-- (Stream Nat) holds a stream, thus it has no JSON form (Q7).
+-- mapS and zipS make a new stream by `unfold`: the seed is the old stream.
+def nats : Stream Nat := unfold (fun (n : Nat) => scons Nat Nat n (succ n)) 0
+def headS : (A : Type 0) -> Stream A -> A :=
+  fun (A : Type 0) (s : Stream A) => fold (fun (h : A) (t : Stream A) => h) (out s)
+def tailS : (A : Type 0) -> Stream A -> Stream A :=
+  fun (A : Type 0) (s : Stream A) => fold (fun (h : A) (t : Stream A) => t) (out s)
+def take : (A : Type 0) -> Nat -> Stream A -> List A :=
+  fun (A : Type 0) (n : Nat) => fold (fun (rest : Stream A -> List A) (s : Stream A) => fold (fun (h : A) (t : Stream A) => cons h (rest t)) (out s)) (fun (s : Stream A) => nil) n
+def mapS : (Nat -> Nat) -> Stream Nat -> Stream Nat :=
+  fun (f : Nat -> Nat) (s : Stream Nat) => unfold (fun (r : Stream Nat) => scons Nat (Stream Nat) (f (headS Nat r)) (tailS Nat r)) s
+def zipS : Stream Nat -> Stream Nat -> Stream (Prod Nat Nat) :=
+  fun (s : Stream Nat) (t : Stream Nat) => unfold (fun (p : Prod (Stream Nat) (Stream Nat)) => scons (Prod Nat Nat) (Prod (Stream Nat) (Stream Nat)) (pair (headS Nat (first p)) (headS Nat (second p))) (pair (tailS Nat (first p)) (tailS Nat (second p)))) (pair s t)
+def headNats : Nat := headS Nat nats
+def thirdNat : Nat := headS Nat (tailS Nat (tailS Nat nats))
+def takeThree : List Nat := take Nat 3 nats
+def nth : (n : Nat) -> Nat := fun (n : Nat) => headS Nat (fold (fun (s : Stream Nat) => tailS Nat s) nats n)
+def doubled : List Nat := take Nat 4 (mapS (fun (x : Nat) => natAdd x x) nats)
+def zipped : List (Prod Nat Nat) := take (Prod Nat Nat) 3 (zipS nats (mapS succ nats))
+def nthDoubled : (n : Nat) -> Nat := fun (n : Nat) => headS Nat (fold (fun (s : Stream Nat) => tailS Nat s) (mapS (fun (x : Nat) => natAdd x x) nats) n)
+def takeAgrees : Path (List Nat) (take Nat 2 (tailS Nat nats)) (cons 1 (cons 2 nil)) := refl

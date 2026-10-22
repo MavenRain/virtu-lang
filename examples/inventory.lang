@@ -1,10 +1,9 @@
--- The sample domain in use, with the indexed family Lot (former F15).
-def bolt : Item := makeItem red 3 10
-def nut : Item := makeItem blue 1 40
-def stock : List Item := cons bolt (cons nut nil)
-def stockTotal : Nat := total stock
-def stockRed : Nat := redTotal stock
-def pile : Stack := push 1 (push 2 bottom)
-def pileDepth : Nat := depth pile
-def lot : Lot 3 := makeLot 3 250
-def lotCost : Nat := lotPrice lot
+-- The sample domain in use: Bool tests, a priced vector and a list fold.
+def lineTotal : (price count : Nat) -> Nat := fun (price count : Nat) => natMul price count
+def stockTotal : Nat := natAdd (lineTotal 3 10) (lineTotal 1 40)
+def isRed : (c : Fin 3) -> Bool := fun (c : Fin 3) => finCase 3 c true false false
+def stockRed : Nat := natAdd (boolIf Nat (isRed 0) (lineTotal 3 10) 0) (boolIf Nat (isRed 2) (lineTotal 1 40) 0)
+def pile : List Nat := cons 1 (cons 2 nil)
+def pileDepth : Nat := fold (fun (top : Nat) (acc : Nat) => natAdd acc 1) 0 pile
+def lot : Sigma (price : Nat) (Vec Nat 1) := pack 250 (vcons Nat 0 250 (vnil Nat))
+def lotCost : Nat := witness lot

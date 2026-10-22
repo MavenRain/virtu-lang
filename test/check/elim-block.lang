@@ -1,0 +1,3 @@
+-- elim is only for a domain family outside a block (S2 chunk A, Q7 (a)).
+-- Charter is a sort of a mutual block, so elim on Charter is refused.
+def bad : Charter Nat -> Nat := fun (c : Charter Nat) => elim (fun (d : Charter Nat) => Nat) 0 c

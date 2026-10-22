@@ -1,0 +1,6 @@
+-- Two different steps give the same stream of zeros, but S4 gives no path
+-- from a bisimulation (Q5): the two unfolds do not convert, thus refl
+-- does not have these ends.
+def zerosA : Stream Nat := unfold (fun (n : Nat) => scons Nat Nat 0 n) 0
+def zerosB : Stream Nat := unfold (fun (n : Nat) => scons Nat Nat 0 (succ n)) 0
+def same : Path (Stream Nat) zerosA zerosB := refl

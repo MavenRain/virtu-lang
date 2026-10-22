@@ -1,0 +1,4 @@
+-- A fold of Vec needs a case for each constructor: vnil, vcons and vswap.
+-- This fold into Nat has the vnil and vcons cases only, so it has one
+-- argument too few (S2 chunk A, the arity test of an indexed fold).
+def f : Vec Nat 2 -> Nat := fun (v : Vec Nat 2) => fold 0 (fun (k : Nat) (h : Nat) (r : Nat) => succ r) v

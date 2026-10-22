@@ -1,0 +1,17 @@
+-- Nat (S3): a natural number with no bound. A value below 2^64 is a machine
+-- word, a larger value has limbs. natAdd, natMul and succ promote, natSub
+-- stops at 0 and demotes, so each number has one normal form. The entry
+-- takes a word and gives a big Nat.
+def wordMax : Nat := 18446744073709551615
+def twoTo64 : Nat := succ wordMax
+def twoTo128 : Nat := natMul twoTo64 twoTo64
+def bigSum : Nat := natAdd twoTo128 twoTo64
+def demoted : Nat := natSub twoTo64 1
+def floorZero : Nat := natSub 5 twoTo64
+def bigDiff : Nat := natSub twoTo128 twoTo128
+def bigSame : Fin 2 := natEq (natAdd wordMax 1) twoTo64
+def bigLess : Fin 2 := natLe twoTo128 twoTo64
+def demotePath : Path Nat (natSub 18446744073709551616 1) 18446744073709551615 := refl
+def oddGap : (a : Nat) -> Nat := fun (a : Nat) => natSub (natMul (succ a) (succ a)) (natMul a a)
+def bigLessSame : Fin 2 := natLe 18446744073709551617 18446744073709551616
+def bigLeSame : Fin 2 := natLe 18446744073709551616 18446744073709551617

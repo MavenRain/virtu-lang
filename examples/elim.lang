@@ -1,0 +1,60 @@
+-- The dependent eliminator on domain families (S2, Q6 (a); orbit S7 B1,
+-- O21). The motive takes the indices, then the value. A case takes the
+-- fields, and after each recursive field its induction hypothesis: the
+-- motive at the field, or a path over a path field. A path case gives a
+-- path over the constructor line.
+def parity : Fin 4 -> Fin 4 := fun (a : Fin 4) => finAdd 4 a a
+def Par : Fin 4 -> Fin 4 -> Type 0 := fun (a : Fin 4) (b : Fin 4) => Path (Fin 4) (parity a) (parity b)
+-- The elim of Quot (Fin 4) Par into the set Trunc0 (Fin 4), with a
+-- constant motive. The quotSquash case gets the ends, the paths and their
+-- hypotheses, and squash0 fills the square.
+def toTruncE : Quot (Fin 4) Par -> Trunc0 (Fin 4) :=
+  fun (z : Quot (Fin 4) Par) => elim (fun (q : Quot (Fin 4) Par) => Trunc0 (Fin 4))
+    (fun (a : Fin 4) => trunc0 (Fin 4) (parity a))
+    (fun (a : Fin 4) (b : Fin 4) (r : Par a b) => fun (i : I) => trunc0 (Fin 4) (r @ i))
+    (fun (x : Quot (Fin 4) Par) (ihx : Trunc0 (Fin 4)) (y : Quot (Fin 4) Par) (ihy : Trunc0 (Fin 4))
+      (p : Path (Quot (Fin 4) Par) x y) (ihp : Path (Trunc0 (Fin 4)) ihx ihy)
+      (q : Path (Quot (Fin 4) Par) x y) (ihq : Path (Trunc0 (Fin 4)) ihx ihy) =>
+      fun (i : I) => fun (j : I) => squash0 (Fin 4) ihx ihy ihp ihq i j) z
+def quotThreeE : Trunc0 (Fin 4) := toTruncE (quot (Fin 4) Par 3)
+def r13 : Par 1 3 := refl
+def quotEqAtE : Path (Trunc0 (Fin 4)) (trunc0 (Fin 4) 2) (trunc0 (Fin 4) 2) := fun (i : I) => toTruncE (quotEq (Fin 4) Par 1 3 r13 i)
+-- A dependent motive on Vec: the map of a function over the entries, at
+-- the same index. The vswap case is vswap at the new heads.
+def vecMapE : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (n : Nat) -> Vec A n -> Vec B n :=
+  fun (A : Type 0) (B : Type 0) (f : A -> B) (n : Nat) (v : Vec A n) => elim (fun (k : Nat) (w : Vec A k) => Vec B k)
+    (vnil B)
+    (fun (consLen : Nat) (consHead : A) (consTail : Vec A consLen) (ih : Vec B consLen) => vcons B consLen (f consHead) ih)
+    (fun (swapLen : Nat) (swapX : A) (swapY : A) (swapRest : Vec A swapLen) (ih : Vec B swapLen) => fun (i : I) => vswap B swapLen (f swapX) (f swapY) ih i) v
+def vecXY : Vec (Fin 2) 2 := vcons (Fin 2) 1 0 (vcons (Fin 2) 0 1 (vnil (Fin 2)))
+def vecYX : Vec (Fin 2) 2 := vcons (Fin 2) 1 1 (vcons (Fin 2) 0 0 (vnil (Fin 2)))
+def vecTwo : Vec (Fin 2) 2 := vecMapE (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) 2 vecXY
+def vecSwapE : Path (Vec (Fin 2) 2) vecTwo (vecMapE (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) 2 vecYX) :=
+  fun (i : I) => vecMapE (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) 2 (vswap (Fin 2) 0 0 1 (vnil (Fin 2)) i)
+def swapAt0 : Vec (Fin 2) 2 := vecSwapE @ i0
+def swapAt1 : Vec (Fin 2) 2 := vecSwapE @ i1
+-- The count of a Vec by elim with a constant motive.
+def vecCountE : (n : Nat) -> Vec (Fin 2) n -> Nat :=
+  fun (n : Nat) (v : Vec (Fin 2) n) => elim (fun (k : Nat) (w : Vec (Fin 2) k) => Nat)
+    0
+    (fun (consLen : Nat) (consHead : Fin 2) (consTail : Vec (Fin 2) consLen) (ih : Nat) => succ ih)
+    (fun (swapLen : Nat) (swapX : Fin 2) (swapY : Fin 2) (swapRest : Vec (Fin 2) swapLen) (ih : Nat) => fun (i : I) => succ (succ ih)) v
+def vecTwoCountE : Nat := vecCountE 2 vecTwo
+-- The identity on Vec by elim with the motive Vec (Fin 2) k (a rebuild),
+-- and a proof by elim with a path motive that it is the identity. The
+-- vswap case is a square: vswap at the hypothesis line.
+def vecIdE : (n : Nat) -> Vec (Fin 2) n -> Vec (Fin 2) n :=
+  fun (n : Nat) (v : Vec (Fin 2) n) => elim (fun (k : Nat) (w : Vec (Fin 2) k) => Vec (Fin 2) k)
+    (vnil (Fin 2))
+    (fun (consLen : Nat) (consHead : Fin 2) (consTail : Vec (Fin 2) consLen) (ih : Vec (Fin 2) consLen) => vcons (Fin 2) consLen consHead ih)
+    (fun (swapLen : Nat) (swapX : Fin 2) (swapY : Fin 2) (swapRest : Vec (Fin 2) swapLen) (ih : Vec (Fin 2) swapLen) => fun (i : I) => vswap (Fin 2) swapLen swapX swapY ih i) v
+def vecIdPathE : (n : Nat) -> (v : Vec (Fin 2) n) -> Path (Vec (Fin 2) n) (vecIdE n v) v :=
+  fun (n : Nat) (v : Vec (Fin 2) n) => elim (fun (k : Nat) (w : Vec (Fin 2) k) => Path (Vec (Fin 2) k) (vecIdE k w) w)
+    refl
+    (fun (consLen : Nat) (consHead : Fin 2) (consTail : Vec (Fin 2) consLen) (ih : Path (Vec (Fin 2) consLen) (vecIdE consLen consTail) consTail) => fun (j : I) => vcons (Fin 2) consLen consHead (ih @ j))
+    (fun (swapLen : Nat) (swapX : Fin 2) (swapY : Fin 2) (swapRest : Vec (Fin 2) swapLen) (ih : Path (Vec (Fin 2) swapLen) (vecIdE swapLen swapRest) swapRest) => fun (i : I) => fun (j : I) => vswap (Fin 2) swapLen swapX swapY (ih @ j) i) v
+-- The elim of a formal hcomp in Vec is stuck: it waits for the hcomp to
+-- reduce at an end.
+def hcompE : Path (Vec (Fin 2) 2) (vecMapE (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) 2 vecXY) (vecMapE (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) 2 vecYX) :=
+  fun (j : I) => vecMapE (Fin 2) (Fin 2) (fun (r : Fin 2) => finAdd 2 r 1) 2 (hcomp (Vec (Fin 2) 2) (~j \/ j)
+    (fun (i : I) => [ ~j -> vecXY, j -> vswap (Fin 2) 0 0 1 (vnil (Fin 2)) i ]) vecXY)

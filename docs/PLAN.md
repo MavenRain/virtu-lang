@@ -56,6 +56,46 @@ On 2026-10-22 the USER accepted every proposal: O1 to O24 are all (a)
 The claims that PLAN 2.2 and 2.3 mark "to check" stay claims. The S1
 kickoff checks them.
 
+### USER ruling (S1 kickoff)
+
+On 2026-10-22 the USER accepted every S1 kickoff proposal: K1 to K12 are
+all (a). The kernel donor is agent-lang 06854bf. These are now rulings:
+
+- K1 the big `Nat` stays (the port is a copy), so `Nat` has no bound. S5
+  gives `Credits` its 64-bit refusal at overflow (O11). The agent-lang
+  `trap.lang` (EVAL_FUEL) and `nat-range.lang` (FIN_RANGE) tests replace
+  the seed tests.
+- K2 when a file is in the two repositories and the two copies differ,
+  the agent-lang copy wins. S1 then makes only the removals and the verb
+  change on it.
+- K3 test/path-regressions.c keeps the kernel helpers and rows. The IO,
+  filesystem and Ollama helpers and rows go, and the rows that use a
+  removed type go or change.
+- K4 `Fin` stays a kernel builtin in S1 (`Bool := Fin 2`). S2 adds
+  `Fin k` as a library cell monad and a path that shows that the two
+  forms are equivalent.
+- K5 S1 uses the agent-lang domain.lang without Json, Log and IO. The
+  seed types (Color, Flag, Item, Stack, Lot) go. The agent-lang families
+  are kernel fixtures, not base types. S5 moves the fixtures that are not
+  cell monads, duals or carriers to a domain file that only the gate
+  loads.
+- K6 the S1 examples are 27 kernel examples: 24 without change, and nat,
+  inventory and laws without the parts that use a removed type.
+- K7 each removed name (`Text`, `Int64`, `Json`, `Log`, `IO`) has a guest
+  check refusal test, a string literal has a parse refusal test, and the
+  gate has a row for the removed `json` verb.
+- K8 docs/STATUS.md `## S1` records each removed feature with its
+  agent-lang source and the command that restores it.
+- K9 S1 has 10 mutants: the kickoff mutants f1 to f9, and M10, which
+  puts the `Text` builtin row back.
+- K10 gen/embed.c loses the `-r` runtime embed mode.
+- K11 json.c loses the `Text` and `Int64` value cases and the Json
+  family code. S5 adds back only the `Text` output for the carriers
+  (O10).
+- K12 the edits of sections 2.2 and 2.3 from the claim checks C1 to C3
+  are accepted. All three claims are confirmed. The `State S X` row now
+  has the hypothesis "for sets `S` and `X`".
+
 ## 2. The type constructors
 
 ### 2.1 The ambient category
@@ -98,7 +138,8 @@ The request does not define "cell monad". This plan reads it as follows
 
 In a locally presentable (infinity, 1)-category, a reflective localization
 is accessible exactly when it is the localization at a small set of maps
-(Lurie, Higher Topos Theory, section 5.5.4). Thus the idempotent cell monads
+(Lurie, Higher Topos Theory, Propositions 5.5.4.2 and 5.5.4.15; S1
+kickoff C3). Thus the idempotent cell monads
 are the accessible localizations, and CTT gives each one as a HIT
 (Christensen, Opie, Rijke and Scoccola, "Localization in homotopy type
 theory", 2020). The non-idempotent cell monads are the free algebra monads
@@ -117,11 +158,21 @@ of the signatures.
 | `Quot X R` | one 1-cell for each `R x y`, with `Trunc0` | quotients |
 | `State S X` | 0-cells `get` and `put`, 1-cells for the laws of state, with `Trunc0` | the program monad (2.5) |
 
-Two rows are claims to check in the S1 kickoff, not facts:
+The S1 kickoff checked the first row below (C1). The second row is a note:
 
 - `State S X`: the free model of the theory of state on `X` is
-  `S -> S * X` (Plotkin and Power). In CTT the eliminator of the HIT into
-  `S -> S * X` must exist, and the map must be an equivalence for a set `S`.
+  `S -> S * X` (Plotkin and Power, "Notions of Computation Determine
+  Monads", 2002, section 3, Theorem 1). For one location the laws are the
+  four interaction laws: GP `get (\s. put s t) = t`; GG
+  `get (\s. get (\s'. k s s')) = get (\s. k s s)`; PP
+  `put s (put s' t) = put s' t`; PG `put s (get k) = put s (k s)`. In CTT
+  the fold of the HIT into `S -> S * X` sends each law 1-cell to `refl`.
+  The fold is an equivalence when `S` and `X` are both sets: the `Trunc0`
+  cell needs a set as the target. No source gives this CTT form. The S3
+  probe must show: the declaration checks (`get` has the arity `S`); the
+  fold checks with `refl` for each law; the inverse and the two round-trip
+  paths check, with no choice; a fold into a target that is not a set is
+  refused; and evals of the fold.
 - `List A` and `Nat` as cell monads at `Unit`: the types are the
   inductive types of the kit. Only the declaration form changes.
 
@@ -143,12 +194,15 @@ and the cocells generate: the cofree `C`-coalgebra on `X`. `extend` and
 | `Cofree (A, B) X` | one 0-cocell `obs : D X -> (a : A) * (B a -> D X)` | `Free (A, B)` |
 | `Store S X = S * (S -> X)` | the costate cocells `pos` and `peek` | `State S` |
 
-The dual of an n-cell (n >= 1) is a colocalization. Claim to check in the
-S1 kickoff: an internal coreflection in HoTT is `X |-> P * X` for a
-proposition `P` (Shulman, "Brouwer's fixed-point theorem in real-cohesive
-homotopy type theory", 2018). If this holds, a higher cocell gives only
-that case. Proposal (O5 (a)): admit 0-cocells, and admit a higher cocell
-only in the form `P * -`.
+The dual of an n-cell (n >= 1) is a colocalization. An internal
+coreflection in HoTT is `X |-> P * X` for a proposition `P` (Shulman,
+"Brouwer's fixed-point theorem in real-cohesive homotopy type theory",
+2018, Theorem 4.1; S1 kickoff C2). The hypotheses: a predicate on the
+universe that is invariant under equivalence, an operation on the
+universe into that predicate, a counit, and the universal property, all
+stated in type theory. Then `P` is the coreflection of `Unit`. Thus a
+higher cocell gives only that case. Ruling (O5 (a)): admit 0-cocells, and
+admit a higher cocell only in the form `P * -`.
 
 CTT realizes the final coalgebras with coinductive families, a guarded
 `unfold` and a lazy `out` (agent-lang S4). The kit `unfold` into `List`

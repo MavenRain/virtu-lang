@@ -1,0 +1,4 @@
+-- elim on Vec needs a motive over the index and the vector, one case for
+-- each of its three constructors, then a scrutinee (S2 chunk A). This elim
+-- has two cases, so the vector stands where the vswap case must be.
+def bad : (n : Nat) -> Vec Nat n -> Nat := fun (n : Nat) (v : Vec Nat n) => elim (fun (k : Nat) (w : Vec Nat k) => Nat) 0 (fun (l : Nat) (h : Nat) (t : Vec Nat l) (ih : Nat) => succ ih) v

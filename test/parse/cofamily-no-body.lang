@@ -1,0 +1,3 @@
+-- A cofamily needs a body after ':=' (S4 Q1): the layer family at the
+-- parameters of the cofamily.
+cofamily Nats :=

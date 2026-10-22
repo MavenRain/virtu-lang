@@ -1,0 +1,3 @@
+-- elim on Vec needs a motive over its index, then the vector (S2 chunk A).
+-- This motive takes only the vector at the fixed index 2, so it is refused.
+def bad : Vec Nat 2 -> Nat := fun (v : Vec Nat 2) => elim (fun (c : Vec Nat 2) => Nat) 0 0 0 v

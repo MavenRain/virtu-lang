@@ -1,0 +1,22 @@
+-- Decidable equality and Hedberg (S5b, rulings R3 and R4): decEqFin n a b
+-- and decEqNat a b decide a path at literals, inl with the path when the
+-- literals are equal, inr with a refutation by transport when they differ.
+-- hedberg turns a decision procedure into an isSet proof; isSetNat and
+-- isSetFin are its two instances. A bare decision at unequal literals is
+-- not a top-level def here: its value inr holds a function, which has no
+-- JSON form (the build would refuse it with JSON_VALUE).
+-- The positive twin of the refusal trunc0-no-set: a fold of Trunc0 (Fin 2)
+-- into Nat with isSetNat as the squash0 case.
+def toNat : Trunc0 (Fin 2) -> Nat := fun (t : Trunc0 (Fin 2)) => fold (fun (a : Fin 2) => finCase 2 a 0 1) isSetNat t
+-- The fold at a point: trunc0 1 goes to 1.
+def toNat1 : Nat := toNat (trunc0 (Fin 2) 1)
+def toNatAt1 : Path Nat (toNat (trunc0 (Fin 2) 1)) 1 := refl
+-- The decision is inl refl when the literals are equal.
+def dec00 : Path (Dec (Path (Fin 3) 0 0)) (decEqFin 3 0 0) (inl refl) := refl
+-- The decision is inr when the literals differ: either selects 1.
+def isRight01 : Path (Fin 2) (either (fun (_ : Path (Fin 3) 0 1) => 0) (fun (_ : Not (Path (Fin 3) 0 1)) => 1) (decEqFin 3 0 1)) 1 := refl
+def isRightNat : Path (Fin 2) (either (fun (_ : Path Nat 4 5) => 0) (fun (_ : Not (Path Nat 4 5)) => 1) (decEqNat 4 5)) 1 := refl
+-- A closed square from isSetNat and one from isSetFin: each reduces to a
+-- constant.
+def sq : Path (Path Nat 0 0) (fun (_ : I) => 0) (fun (_ : I) => 0) := isSetNat 0 0 (fun (_ : I) => 0) (fun (_ : I) => 0)
+def sqFin : Path (Path (Fin 2) 1 1) (fun (_ : I) => 1) (fun (_ : I) => 1) := isSetFin 2 1 1 (fun (_ : I) => 1) (fun (_ : I) => 1)

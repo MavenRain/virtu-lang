@@ -1,2 +1,4 @@
-trap.lang EVAL_OVERFLOW
+trap.lang EVAL_FUEL
 function.lang JSON_VALUE
+dec-json-function.lang JSON_VALUE
+codata.lang JSON_VALUE

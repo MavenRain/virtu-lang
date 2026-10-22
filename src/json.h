@@ -3,7 +3,7 @@
    `langc build` checks the program, evaluates each instance and gives one
    JSON document: {"LANG":1,"instances":[{"name","type","value"}]}. An
    instance is a PROGRAM definition whose type is data: not a function type,
-   not a universe (types and families) and not an equality (proofs). Values
+   not a universe (types and families) or a cofamily. Paths are instances. Values
    carry no types, so the printer walks the type and the value together. */
 #ifndef LANG_JSON_H
 #define LANG_JSON_H
