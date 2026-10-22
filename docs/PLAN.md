@@ -27,6 +27,35 @@ them as open items:
   runner in C that loads and runs guest test files is permitted. Do not add
   a node, Python or shell harness. The kit JS regressions stay.
 
+### USER ruling (S0)
+
+On 2026-10-22 the USER accepted every proposal: O1 to O24 are all (a)
+(section 8). These are now rulings, not open items:
+
+- O1 the name virtu-lang; O2 the kernel in this repository.
+- O3 to O8 the type constructors: the ambient `Sigma`, `Pi`, `Path` and
+  `U` with no user type declaration (O3); a cell monad is the free algebra
+  monad of a cell signature, as a HIT (O4); 0-cocells, and a higher cocell
+  only as `P * -` (O5); laws as paths, no proof irrelevance (O6); `Virt`,
+  the world `Store W` and the runner (O7); `data` and `family` refused in
+  a program and kept in the kernel (O8).
+- O9 to O22 the base span: each carrier only as far as a row needs it
+  (O9); `Text` with literals and `textEq` only (O10); `Credits` as 64-bit
+  natural numbers with a refusal at overflow (O11); `Role := Text` (O12);
+  a new card is `low` (O13); rarity multipliers 1, 2, 4, 8, 16 (O14);
+  `Value := Text` (O15); one history entry for each balance change (O16);
+  a listing from row 19 keeps the price at the time of listing (O17);
+  row 8 does not attach, `attachCard` needs the owner (O18);
+  `tap_denominator` adds bonus credits (O19); not enough credits gives
+  `none` and no change (O20); a purchase takes the first listing with the
+  name and removes it (O21); camel case source names, `kind` for the item
+  type (O22).
+- O23 the laws L1 to L5 as 1-cells of `Virt` in S6; O24 the output is the
+  instances of the run of `main`, with references as `id`.
+
+The claims that PLAN 2.2 and 2.3 mark "to check" stay claims. The S1
+kickoff checks them.
+
 ## 2. The type constructors
 
 ### 2.1 The ambient category
