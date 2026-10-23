@@ -1,0 +1,49 @@
+-- The library cells with laws (S3, K3): map, bind and fold through each
+-- cell, and the maps to and from the domain families. unitC is pure at
+-- the cell C, because pure needs a declared cell type.
+def unit1C : (V : Type 0) -> V -> Trunc1C V := fun (V : Type 0) (v : V) => pure v
+def to1 : (V : Type 0) -> Trunc1C V -> Trunc1 V :=
+  fun (V : Type 0) (t : Trunc1C V) => fold (fun (a : Trunc1 V) (b : Trunc1 V) => fun (i : I) => squash1 V a b i) (fun (v : V) => trunc1 V v) t
+def of1 : (V : Type 0) -> Trunc1 V -> Trunc1C V :=
+  fun (V : Type 0) (t : Trunc1 V) => fold (fun (v : V) => unit1C V v) (fun (a : Trunc1C V) (b : Trunc1C V) => fun (i : I) => squash1C V a b i) t
+def unit0C : (V : Type 0) -> V -> Trunc0C V := fun (V : Type 0) (v : V) => pure v
+def to0 : (V : Type 0) -> Trunc0C V -> Trunc0 V :=
+  fun (V : Type 0) (t : Trunc0C V) => fold
+    (fun (a : Trunc0 V) (b : Trunc0 V) (p : Path (Trunc0 V) a b) (q : Path (Trunc0 V) a b) => fun (i : I) => fun (j : I) => squash0 V a b p q i j)
+    (fun (v : V) => trunc0 V v) t
+def of0 : (V : Type 0) -> Trunc0 V -> Trunc0C V :=
+  fun (V : Type 0) (t : Trunc0 V) => fold (fun (v : V) => unit0C V v)
+    (fun (a : Trunc0C V) (b : Trunc0C V) (p : Path (Trunc0C V) a b) (q : Path (Trunc0C V) a b) => fun (i : I) => fun (j : I) => squash0C V a b p q i j) t
+def unitQC : (A : Type 0) -> (R : A -> A -> Type 0) -> (V : Type 0) -> V -> QuotC A R V :=
+  fun (A : Type 0) (R : A -> A -> Type 0) (V : Type 0) (v : V) => pure v
+-- QuotC A R Empty is the set quotient: the maps to and from Quot A R.
+def toQuot : (A : Type 0) -> (R : A -> A -> Type 0) -> QuotC A R Empty -> Quot A R :=
+  fun (A : Type 0) (R : A -> A -> Type 0) (c : QuotC A R Empty) => fold (fun (a : A) => quot A R a)
+    (fun (a : A) (b : A) (r : R a b) => fun (i : I) => quotEq A R a b r i)
+    (fun (x : Quot A R) (y : Quot A R) (p : Path (Quot A R) x y) (q : Path (Quot A R) x y) => fun (i : I) => fun (j : I) => quotSquash A R x y p q i j)
+    (fun (v : Empty) => absurd (Quot A R) v) c
+def ofQuot : (A : Type 0) -> (R : A -> A -> Type 0) -> Quot A R -> QuotC A R Empty :=
+  fun (A : Type 0) (R : A -> A -> Type 0) (q : Quot A R) => fold (fun (a : A) => qinC A R Empty a)
+    (fun (a : A) (b : A) (r : R a b) => fun (i : I) => quotEqC A R Empty a b r i)
+    (fun (x : QuotC A R Empty) (y : QuotC A R Empty) (p : Path (QuotC A R Empty) x y) (u : Path (QuotC A R Empty) x y) => fun (i : I) => fun (j : I) => quotSquashC A R Empty x y p u i j) q
+def Any : Nat -> Nat -> Type 0 := fun (a : Nat) (b : Nat) => Unit
+-- map and bind through each cell.
+def inc1 : Trunc1C Nat -> Trunc1C Nat := fun (t : Trunc1C Nat) => map (fun (n : Nat) => natAdd n 1) t
+def bind1 : Trunc1C Nat -> Trunc1C Nat := fun (t : Trunc1C Nat) => bind t (fun (n : Nat) => pure (natMul n 10))
+def inc0 : Trunc0C Nat -> Trunc0C Nat := fun (t : Trunc0C Nat) => map (fun (n : Nat) => natAdd n 1) t
+def bind0 : Trunc0C Nat -> Trunc0C Nat := fun (t : Trunc0C Nat) => bind t (fun (n : Nat) => pure (natMul n 10))
+def incQ : QuotC Nat Any Nat -> QuotC Nat Any Nat := fun (t : QuotC Nat Any Nat) => map (fun (n : Nat) => natAdd n 1) t
+def bindQ : QuotC Nat Any Nat -> QuotC Nat Any Empty := fun (t : QuotC Nat Any Nat) => bind t (fun (n : Nat) => qinC Nat Any Empty n)
+-- The evals: each end of a path cell, and each face of a square cell.
+def e1Map : Trunc1 Nat := to1 Nat (inc1 (unit1C Nat 3))
+def e1Bind : Trunc1 Nat := to1 Nat (bind1 (squash1C Nat (unit1C Nat 1) (unit1C Nat 2) i1))
+def e1End : Trunc1 Nat := to1 Nat (squash1C Nat (unit1C Nat 1) (unit1C Nat 2) i0)
+def e1Back : Trunc1C Nat := of1 Nat (trunc1 Nat 5)
+def e0Map : Trunc0 Nat := to0 Nat (inc0 (bind0 (unit0C Nat 3)))
+def t0a : Trunc0C (Trunc1 Nat) := unit0C (Trunc1 Nat) (trunc1 Nat 1)
+def t0b : Trunc0C (Trunc1 Nat) := unit0C (Trunc1 Nat) (trunc1 Nat 2)
+def t0p : Path (Trunc0C (Trunc1 Nat)) t0a t0b := fun (k : I) => unit0C (Trunc1 Nat) (squash1 Nat (trunc1 Nat 1) (trunc1 Nat 2) k)
+def e0Face : Trunc0 (Trunc1 Nat) := to0 (Trunc1 Nat) (squash0C (Trunc1 Nat) t0a t0b t0p t0p i0 i1)
+def e0Face2 : Trunc0 (Trunc1 Nat) := to0 (Trunc1 Nat) (squash0C (Trunc1 Nat) t0a t0b t0p t0p i1 i0)
+def eqTo : Quot Nat Any := toQuot Nat Any (quotEqC Nat Any Empty 1 2 unit i1)
+def eqBind : Quot Nat Any := toQuot Nat Any (bindQ (incQ (unitQC Nat Any Nat 4)))

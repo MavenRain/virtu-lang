@@ -1,0 +1,2 @@
+-- The faces ~i and ~j meet at (i0, i0), but ovA and ovB are not equal.
+cell Ov (X : Type 0) := ov : (ovA : X) -> (ovB : X) -> (i : I) -> (j : I) -> X [ ~i -> ovA, i -> ovA, ~j -> ovB, j -> ovA ]

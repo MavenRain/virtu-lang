@@ -1,0 +1,3 @@
+-- A fold path case must have the ends of the boundary: refl is a path
+-- from a to a, but the squash1C case needs a path from a to b.
+def bad : Trunc1C Nat -> Nat := fun (t : Trunc1C Nat) => fold (fun (a : Nat) (b : Nat) => refl) (fun (n : Nat) => n) t

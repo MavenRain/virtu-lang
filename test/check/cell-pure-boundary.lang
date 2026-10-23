@@ -1,0 +1,2 @@
+-- pure in a law boundary has no declared cell type.
+cell PB (X : Type 0) := opB : (pbX : X) -> (i : I) -> X [ ~i -> pure pbX, i -> pbX ]

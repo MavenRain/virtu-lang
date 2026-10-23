@@ -207,3 +207,129 @@ Named killers that do not kill:
 - N4: cells cbe does not kill, because `be` is a throw and the pure case does not run.
 - N6: free leaves does not kill.
 - N10: cells ce does not kill (D10).
+
+## S3
+
+S3 adds n-cells to the `cell` declaration: path cells and square cells. The kickoff rulings K1 to K13 are all (a) (docs/PLAN.md, `### USER ruling (S3 kickoff)`, 2026-10-22). The claims C7 to C12 are in ~/Documents/virtu-lang-work/S3-claims.md (outside the repo).
+
+### Gate
+
+`make -B -j 2 check` exits 0 (~/Documents/virtu-lang-work/s3b-gate8.log).
+
+| gate line | S2 | K12 | S3 | added in S3 |
+|---|---|---|---|---|
+| examples | 32 | 35 | 35 | examples/ncell.lang, state.lang, loc.lang |
+| parse refusals | 14 | 15 | 15 | test/parse/cell-boundary-open.lang |
+| check refusals | 86 | 93 | 93 | 7 files test/check/cell-*.lang |
+| evals | 128 | about 140 | 145 | 17 rows in test/eval/expect.txt (D2) |
+| build | 32 | 35 | 35 | test/json/ncell.json, state.json, loc.json |
+| build refusals | 5 | 5 | 5 | none |
+| regressions | 6 | 6 | 6 | none |
+| printer regressions | 2 | 2 | 2 | none |
+| path regressions | 158 | 164 | 164 | 4 cell boundary round trips, the P6 map, the P5 square face order |
+
+Only the evals line differs from K12: 17 rows, not about 12 (D2).
+
+### K rows
+
+- K1: parse_cell parses a system after the type of an operation (src/front/parser.c:599).
+- K2: a path operation is a path constructor of the cell family. cell_fields copies the boundary (src/front/check.c:3865). cell_rebuild adds the interval binders (check.c:867). cell_fold checks the type of each path case with path_case_type (rebuild_ok, check.c:897).
+- K3: the library cells Trunc1C, Trunc0C and QuotC in domain/domain.lang, with the maps to and from the S1 families in examples/ncell.lang. cell_path_type changes a cell operation field `Path X a b` to `Path SELF a b` (open point 4).
+- K4: no new set-target rule. The square case has the type isSet RES. test/check/cell-noset.lang (PATH_UIP) and cell-nosquare.lang (TYPE_MISMATCH) refuse a non-set target.
+- K5: the domain cell StateC (getC, putC, the 4 law 1-cells GP, GG, PP, PG and the square) and examples/state.lang (run, inv, round trip 1, round trip 2 by its point cases). Open point 1 gives the gap.
+- K6: examples/loc.lang, the nullification at `Fin 2` (cell Null2) in the form of Rijke, Shulman and Spitters 2020, Definition 2.14.
+- K7: the dbc8e1a fold_image fix stays. P1 and P2 are KILLED.
+- K8: the ua paths of OptionC, Either, ListC and NatC (S2 F1 to F3) are for a later kernel slice. No S3 change.
+- K9: a fold with a missing case names the family, the number of cases and the first constructor with no case (TYPE_MISMATCH, no golden moved). `NAME.pure` stays LEX_CHAR. The direct form `bind (pure a) f` checks (open point 3).
+- K10: the added tests below.
+- K11: the mutants below.
+- K12: the gate above.
+- K13: docs/PLAN.md 2.2 cites Rijke, Shulman and Spitters 2020 (Definition 2.14, Theorem 2.18) next to the CORS citation, and the State row says "for sets `S` and `X`". PLAN section 1 records both.
+
+### Claims (S3-claims.md)
+
+- C7: `Trunc1` is a HIT. CONFIRMED (HoTT book 6.9). The cell twin is Trunc1C.
+- C8: `Trunc0` is a HIT with a 2-dimensional constructor. CONFIRMED (6.9, 7.3). Trunc0C, QuotC and StateC use the 6.9 square. The 7.3 hub and spoke form is not in S3.
+- C9: set quotients are a HIT. CONFIRMED (6.10). The cell twin is QuotC.
+- C10: localization at a map is a HIT. CONFIRMED. The constructors are in Rijke, Shulman and Spitters 2020 (Definition 2.14, Theorem 2.18), not in Christensen, Opie, Rijke and Scoccola 2020.
+- C11: a reflective localization is accessible exactly when it is the localization at a small set of maps. CONFIRMED (S1 kickoff C3).
+- C12: the free model of the theory of state is `S -> S * X`. CONFIRMED for the monad (Plotkin and Power 2002). No source gives the CTT fold equivalence. examples/state.lang is the evidence, with the round trip 2 gap (open point 1).
+
+### Kernel changes
+
+- src/front/parser.c: parse_cell parses the system of an n-cell (K1).
+- src/front/check.c: cell_fields, cell_rebuild, rebuild_ok and cell_fold (K2); cell_path_type (K3); the fold arity message (K9).
+- domain/domain.lang: the cells Trunc1C, Trunc0C, QuotC and StateC.
+- docs/PLAN.md: `### USER ruling (S3 kickoff)` and the K13 edits.
+
+### Added tests (K10)
+
+- examples: ncell.lang, state.lang, loc.lang.
+- test/parse/cell-boundary-open.lang (PARSE_EXPECT).
+- test/check: cell-path-end.lang (PATH_END), cell-noset.lang (PATH_UIP), cell-nosquare.lang (TYPE_MISMATCH), cell-curried.lang (CELL_POSITIVE), cell-pure-boundary.lang (TYPE_INFER, D1), cell-three-intervals.lang (HIT_BOUNDARY), cell-overlap.lang (SYSTEM_OVERLAP). The codes come from real runs.
+- test/json: ncell.json, state.json, loc.json.
+- test/eval/expect.txt: 17 rows: ncell e1Map, e1Bind, e1End, e1Back, e0Map, e0Face, e0Face2, eqTo, eqBind; state exAt4, afterAt4, gpAt, exFirst, sectAt, roundAt; loc nAt, nEnd.
+- test/path-regressions.c: "Trunc1C squash path round-trips", "Trunc0C squash square round-trips", "QuotC relation path round-trips", "StateC law path with a continuation round-trips", "map through a path cell at a variable interval round-trips" (the P6 killer), "square fold through a neutral case keeps the face order" (the P5b killer).
+
+### Deviations
+
+- D1: test/check/cell-pure-boundary.lang gives TYPE_INFER "pure needs a declared type Option A, List A or Sum E A". The message does not name a cell.
+- D2: evals is 145, not about 140 (K12): 16 rows in chunk B and the row `ncell e1Back` (D3).
+- D3, a designed print, not a bug (finding F-s3-1): print_typed (src/front/eval.c:3950-3970, S2) prints a cell pure value as a typed identity `((fun (_case0 : C) => _case0) (pure v))`, so that the printed term checks again (`pure` needs a declared type). Each cell pure value prints in this form (`def u : Trunc1C Nat := unit1C Nat 5` too). The golden `stream nats` has the same form, and so has the t0p type string in test/json/ncell.json. The row is `ncell e1Back => ((fun (_case0 : Trunc1C Nat) => _case0) (pure 5))`.
+- D4: P5 survives (Mutants).
+- D5: round trip 2 of State as one elim is refused (open point 1).
+- D6: transp at the path constructor gpC at a neutral interval stays stuck (open point 2).
+- D7: P10 survives, except for the build kill (Mutants).
+- D8: the mutant runner is outside the repo. It restores each file from the main checkout, because the S3 changes were not in the index (as S2 D10).
+
+### Open points (S3-build-PROMPT.md)
+
+1. Round trip 2 of State (`inv (run t) = t`) as one elim: REFUSED. The probe ~/Documents/virtu-lang-work/s4-op/op1.lang uses the motive `fun x => Path (StateC Nat Nat) (inv (run x)) x`, the cases getAt, putAt, retAt, `refl` for each of the 4 law cases and `refl` for the square. It gives TYPE_MISMATCH "rt2: refl needs a path type with a constant line, found PathP (fun _ => PathP (fun _x0 => StateC Nat Nat) ...". A law case is a PathP over the law line in a family of propositions. It needs isProp of the motive (from the square stSquashC) and a transport lemma. These are not built. The C12 gap stays: round trip 2 has only its point cases (retAt, getAt, putAt).
+2. transp at a cell type with a continuation field: the point constructors compute. Along a line in S (ua at `Fin 3`, loopRot1), the transport of `getC (Fin 3) Nat (fun s => putC ... s (ret3 7))` gives `getC (Fin 3) Nat (fun x => putC (Fin 3) Nat (hcomp ... (finAdd 3 ... 2) ... 1) (pure 7))`. Along a line in X, the transport of `getC Nat (Fin 3) (fun s => retF 1)` gives `getC Nat (Fin 3) (fun x => pure 2)`. At the path constructor gpC at a neutral interval, `fun i => transp (...) i0 (gpC (Fin 3) Nat (ret3 7) i)` checks and stays a stuck transp (field_transport_boundary to transp_stuck). No wrong value. The stuck path case is a gap (D6).
+3. `bind (pure a) f` in the direct form: RESOLVED. It checks and gives `pure 4` at Trunc1C and at StateC, the same value as the typed helper form.
+4. A cell operation field of type `Path X x y`: RESOLVED by K3 (a). cell_path_type gives `Path SELF a b`. The probe pe-square gave CELL_POSITIVE before the change and passes now.
+5. Null2 (K6), a boundary end `f b` and a continuation over S1: RESOLVED in examples/loc.lang.
+6. The refusal codes: pure in a law boundary gives TYPE_INFER (D1); overlapping faces that disagree give SYSTEM_OVERLAP (cell-overlap.lang, the P3 killer). The square fold regression kills P5b, not P5 (D4).
+7. The JSON form of the new examples: RESOLVED. ncell, state and loc build (json 35).
+
+### Mutants (K11)
+
+The runner ~/Documents/virtu-lang-work/S3-mutants.zsh (outside the repo) copies the main checkout to a scratch copy (rsync). It applies each mutant at a line that it finds by content, and runs `make -B -j 2 check`. When the gate stops before the path regressions, the runner builds build/path-regressions again and runs it. Then it restores the file from the main checkout and compares the two files with cmp. Output: ~/Documents/virtu-lang-work/s3c-mutants.out; logs: s3c-mutants/mlogs. Each restore is equal. The gate before the runs (s3b-gate8.log) and the final gate on the scratch copy (mlogs/final.log) exit 0 at the S3 counts, so each killer passes before and after. Lines are lines of the S3 work tree. Result: 8 of 10 KILLED; P5 and P10 SURVIVED. P5b and P10b are extra variants.
+
+| id | site | mutation | killer | result |
+|---|---|---|---|---|
+| P1 | src/front/check.c:1236 fold_image | `else if (field->continuation)` to `else if (0)` | examples/state.lang, 6 state eval rows, state.json (INTERNAL); 3 path regressions ("fold boundary maps a point constructor continuation" and 2 elim boundary checks) | KILLED |
+| P2 | src/front/check.c:1241 fold_image | `quote_value(m, level + 1u, image)` to `level` | examples/state.lang (PATH_END), examples/loc.lang (INTERNAL), 8 eval rows, loc.json; 2 path regressions | KILLED |
+| P3 | src/front/check.c:3426 boundary_core | `if (0 && !system_overlaps(...))` | test/check/cell-overlap.lang (exit 0, not SYSTEM_OVERLAP) | KILLED (SURVIVED at the kickoff) |
+| P4 | src/front/check.c:1329 path_case_type | `interval_count == 2u` to `3u` | 41 gate failures (examples dec, elim, ncell, quot, state and more); 3 path regressions | KILLED |
+| P5 | src/front/eval.c:1058 fold_square | swap `inner[0]` and `inner[1]` | none | SURVIVED (D4) |
+| P5b | src/front/eval.c:1058 fold_square | the interval order `s @ r1 @ r2` to `s @ r2 @ r1` | path regression "square fold through a neutral case keeps the face order"; examples/quot.lang (PATH_UIP), eval quot toTrunc3, quot.json | KILLED |
+| P6 | src/front/check.c:867 cell_rebuild | drop the interval CORE_PLAM (`for (i = 0u; ...)`) | path regression "map through a path cell at a variable interval round-trips"; examples ncell and state (INTERNAL); 19 gate failures | KILLED |
+| P7 | src/front/eval.c:997 fold_family | the path arm gives the raw field | build: check-clang `-Wunused-function` on fold_path_field; the direct run: 3 path regressions ("fold boundary maps a point constructor path field", "square fold through a neutral case keeps the face order", "block fold: Box, a sibling recursive field at its target") | KILLED |
+| P8 | src/front/parser.c:599 parse_cell | skip the cell system (`ctor->boundary = NULL;`) | PARSE_EXPECT at domain/domain.lang:248 (the first domain cell with a system): 325 gate failures, 163 path regressions | KILLED |
+| P9 | src/front/check.c:3865 cell_fields | `out->boundary = NULL;` | HIT_BOUNDARY "Trunc1C: the path constructor squash1C needs a boundary": 320 gate failures (examples/ncell.lang too), 159 path regressions | KILLED |
+| P10 | src/front/check.c:926 cell_fold | drop the rebuild_ok call | build only: check-clang `-Wunused-parameter` (`st`, check.c:917); the direct run: 164 path regressions pass | SURVIVED (D7) |
+| P10b | src/front/check.c:903 rebuild_ok | `if (1)`: each case passes | none: the gate exits 0 | SURVIVED |
+
+Survivors:
+
+- P5: path_apply (src/front/eval.c:713) reads the given ends only at i0 or i1. fold_square runs only for a constructor value at neutral intervals. At an end, the cell boundary fires first. Thus the inner ends go into a VAL_PAPP (quote_papp keeps them in CORE_PAPP). Each interval substitution in the evaluator applies a closure again, and the boundary fires before the fold. conv (eval.c:3437) compares the path and the interval, not the ends, and the printer prints no ends. Only val_isubst (eval.c:2831, glue_at) puts an interval in a value with no new evaluation. No source program was found that takes it to a stuck square fold. P5 is a survivor, not a proved equivalent. e0Face, e0Face2 and the P5b regression do not kill it.
+- P10 and P10b: rebuild_ok checks the type of the rebuilt path case `c a.. i`. cell_rebuild makes this case from the constructor, so its ends are the constructor boundary at the rebuilt fields, and the case type needs the same ends. No test makes rebuild_ok refuse; test/check/cell-path-end.lang refuses before cell_fold. The check stays as a guard. It is not a proved equivalent.
+
+### Findings
+
+- Field names are global (rule R4). Trunc0C cannot use the Trunc1C field names again, so each cell has its own names (sq1CFrom, sq0CFrom).
+- Under P4, langc prints `(null): :`: path_case_type gives NULL with no diagnostic. Only the mutant gets to this path.
+
+### Staged review fixes
+
+- MEDIUM: a valid square boundary containing an earlier path constructor
+  checked, but `map` and `bind` failed with HIT_BOUNDARY because fold_image
+  accepted only point constructors. It now maps earlier path and square
+  cases at their intervals, with mapped faces as path endpoints.
+- Two C regressions round-trip map and bind through squares whose faces
+  contain earlier paths and squares, while changing the carrier from Nat
+  to Bool. Both fail with HIT_BOUNDARY before the fix. A refusal regression
+  checks that a square case with an unequal path face still gives PATH_UIP.
+- The review gate passes with 167 path regressions. The other S3 gate
+  counts above stay the same. No test or CI check was removed or weakened.

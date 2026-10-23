@@ -126,3 +126,20 @@ fin-cell cellCode 2 => 2
 cells cbo1 => 4
 cells cbo2 => 0
 cells ce => 6
+ncell e1Map => trunc1 Nat 4
+ncell e1Bind => trunc1 Nat 20
+ncell e1End => trunc1 Nat 1
+ncell e1Back => ((fun (_case0 : Trunc1C Nat) => _case0) (pure 5))
+ncell e0Map => trunc0 Nat 31
+ncell e0Face => trunc0 (Trunc1 Nat) (trunc1 Nat 2)
+ncell e0Face2 => trunc0 (Trunc1 Nat) (trunc1 Nat 1)
+ncell eqTo => quot Nat (fun a => fun b => Unit) 2
+ncell eqBind => quot Nat (fun a => fun b => Unit) 5
+state exAt4 => pair 9 40
+state afterAt4 => pair 40 41
+state gpAt => pair 2 7
+state exFirst => 8
+state sectAt => pair 2 3
+loc nAt => trunc1 Nat 8
+loc nEnd => trunc1 Nat 7
+state roundAt => pair 3 6

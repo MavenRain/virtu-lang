@@ -1,0 +1,22 @@
+-- The nullification at Fin 2 (S3, K6): the localization at the one map
+-- Fin 2 -> Unit, in the form of Rijke, Shulman and Spitters (2020)
+-- Definition 2.14. nullExt and nullIsExt make each map Fin 2 -> X
+-- constant up to a path. nullExt2 and nullIsExt2 do the same for the
+-- codiagonal, the maps S1 -> X (the pushout of Unit and Unit under Fin 2
+-- is S1). A type that is null at Fin 2 is a mere proposition (C10), thus
+-- the fold to Trunc1 X checks: each path case is squash1.
+cell Null2 (X : Type 0) := nullExt : (nlF : Fin 2 -> X) -> X
+  | nullIsExt : (nlG : Fin 2 -> X) -> (nlB : Fin 2) -> (i : I) -> X [ ~i -> nullExt X nlG, i -> nlG nlB ]
+  | nullExt2 : (nl2F : S1 -> X) -> X
+  | nullIsExt2 : (nl2G : S1 -> X) -> (nlZ : S1) -> (i : I) -> X [ ~i -> nullExt2 X nl2G, i -> nl2G nlZ ]
+def unitN : (V : Type 0) -> V -> Null2 V := fun (V : Type 0) (v : V) => pure v
+def toTrunc : (V : Type 0) -> Null2 V -> Trunc1 V :=
+  fun (V : Type 0) (t : Null2 V) => fold
+    (fun (g : Fin 2 -> Trunc1 V) => g 0)
+    (fun (g : Fin 2 -> Trunc1 V) (b : Fin 2) => fun (i : I) => squash1 V (g 0) (g b) i)
+    (fun (h : S1 -> Trunc1 V) => h base)
+    (fun (h : S1 -> Trunc1 V) (z : S1) => fun (i : I) => squash1 V (h base) (h z) i)
+    (fun (v : V) => trunc1 V v) t
+def pick : Fin 2 -> Null2 Nat := fun (b : Fin 2) => unitN Nat (boolIf Nat b 7 8)
+def nAt : Trunc1 Nat := toTrunc Nat (nullExt Nat pick)
+def nEnd : Trunc1 Nat := toTrunc Nat (nullIsExt Nat pick 1 i1)

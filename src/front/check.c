@@ -846,37 +846,86 @@ static const Core *cell_pure(Checker *c, const Value *t, uint32_t level, const C
 
 /* The bind case of the 0-cell INST at the cell type RES = C ps W:
    fun fields => INST ps W fields. A recursive field arrives folded and a
-   continuation field arrives as fun b => fold (k b) (S2 K4). */
+   continuation field arrives as fun b => fold (k b) (S2 K4). The interval
+   fields of a path op are path binders (S3 K2):
+   fun fields => <i> INST ps W fields i. */
 static const Core *cell_rebuild(Checker *c, uint32_t inst, const Value *res) {
   Machine *m = c->m;
   const CtorInfo *ctor = &m->ctors[inst];
   uint32_t n = ctor->field_count;
-  const Core **cores = arena_alloc(m->arena, ((size_t)res->argc + n + 1u) * sizeof *cores);
+  uint32_t d = ctor->interval_count;
+  const Core **cores = arena_alloc(m->arena, ((size_t)res->argc + n + d + 1u) * sizeof *cores);
   const Core *body;
   uint32_t i;
   if (cores == NULL)
     return nul(FAIL(c, "OOM", "out of memory"));
   for (i = 0; i < res->argc; i++)
-    cores[i] = quote_value(m, c->level + n, res->args[i]);
-  for (i = 0; i < n; i++)
-    cores[res->argc + i] = core_index(c, CORE_VAR, n - 1u - i);
-  body = core_op(c, OP_CTOR, inst, 0, cores, res->argc + n);
+    cores[i] = quote_value(m, c->level + n + d, res->args[i]);
+  for (i = 0; i < n + d; i++)
+    cores[res->argc + i] = core_index(c, CORE_VAR, n + d - 1u - i);
+  body = core_op(c, OP_CTOR, inst, 0, cores, res->argc + n + d);
+  for (i = d; i > 0u && body != NULL; i--)
+    body = core_bind(c, CORE_PLAM, "i", NULL, body);
   for (i = n; i > 0u && body != NULL; i--)
     body = core_bind(c, CORE_LAM, ctor->fields[i - 1u].name, NULL, body);
   return body;
 }
 
+static const Value *path_case_type(Checker *c, uint32_t inst, const Value *st, const Value *res, const Core *const *cores, uint32_t done);
+
+/* 1 when the path value P has the path type E at LEVEL: its ends are the
+   ends of E, and for a square the same holds at a fresh interval. */
+static int path_value_ok(Checker *c, uint32_t level, const Value *p, const Value *e) {
+  Machine *m = c->m;
+  const Value *r = val_ivar(m, level);
+  const Value *line = e == NULL || e->kind != VAL_PATHP ? NULL : closure_apply(m, e, r);
+  const Value *v;
+  int side;
+  if (p == NULL || line == NULL)
+    return 0;
+  for (side = 0; side < 2; side++) {
+    v = path_apply(m, p, val_iend(m, side), e->args[0], e->args[1]);
+    if (v == NULL || !conv_values(m, level, v, e->args[side]))
+      return v == NULL ? 0 : end_fail(c, line->kind == VAL_PATHP, side == 0 ? "i0" : "i1", v, e->args[side]);
+  }
+  return line->kind != VAL_PATHP || path_value_ok(c, level + 1u, path_apply(m, p, r, e->args[0], e->args[1]), line);
+}
+
+/* The bind case CORES[DONE] of the path op INST has the fold case type
+   of fold_family (S3 K2): at fresh folded fields, a path whose ends are
+   the fold images of the boundary. 1 for a 0-cell. */
+static int rebuild_ok(Checker *c, uint32_t inst, const Value *st, const Value *res, const Core *const *cores, uint32_t done) {
+  Machine *m = c->m;
+  const Value *t = m->ctors[inst].interval_count == 0u ? NULL : path_case_type(c, inst, st, res, cores, done);
+  const Value *p = t == NULL ? NULL : here(c, cores[done]);
+  const Value *v;
+  uint32_t level;
+  if (m->ctors[inst].interval_count == 0u)
+    return 1;
+  for (level = c->level; p != NULL && t != NULL && t->kind == VAL_PI; level++) {
+    v = val_var(m, level);
+    p = apply_value(m, p, v);
+    t = closure_apply(m, t, v);
+  }
+  return path_value_ok(c, level, p, t);
+}
+
 /* bind and map at the cell type RES = C ps W (S2 K4): fold X with each
-   0-cell rebuilding itself at W and the case PURE at pure, which is last. */
-static const Core *cell_fold(Checker *c, const Value *res, const Core *x, const Core *pure) {
+   0-cell rebuilding itself at W and the case PURE at pure, which is last.
+   ST is the type of X. The case of a path op gets the case type check of
+   fold_family (S3 K2). */
+static const Core *cell_fold(Checker *c, const Value *st, const Value *res, const Core *x, const Core *pure) {
   Machine *m = c->m;
   const FamilyInfo *f = &m->families[res->inst];
   const Core **cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 2u) * sizeof *cores);
   uint32_t j;
   if (cores == NULL)
     return nul(FAIL(c, "OOM", "out of memory"));
-  for (j = 0; j + 1u < f->ctor_count; j++)
+  for (j = 0; j + 1u < f->ctor_count; j++) {
     cores[j] = cell_rebuild(c, f->first_ctor + j, res);
+    if (cores[j] == NULL || !rebuild_ok(c, f->first_ctor + j, st, res, cores, j))
+      return NULL;
+  }
   cores[f->ctor_count - 1u] = pure;
   cores[f->ctor_count] = quote_value(m, c->level, res);
   cores[f->ctor_count + 1u] = x;
@@ -920,7 +969,7 @@ static const Core *rule_map(Call *k) {
   f = fn_into(c, k->args[0], a, carrier_of(c->m, k->hint, &hint_carrier, &hint_elem) ? hint_elem : NULL, &b);
   k->type = carried(c, mt, b);
   if (carrier == CARRIER_CELL)
-    return f == NULL || k->type == NULL ? NULL : cell_fold(c, k->type, x, map_case(c, k->type, f));
+    return f == NULL || k->type == NULL ? NULL : cell_fold(c, mt, k->type, x, map_case(c, k->type, f));
   return op3(c, OP_MAP, carrier, 2, f, x, NULL);
 }
 
@@ -950,7 +999,7 @@ static const Core *rule_bind(Call *k) {
     return nul(FAIL(c, "TYPE_MISMATCH", "bind needs a function into the cell %s at a variable type, found one into %s", show(c, mt), show(c, res)));
   k->type = res;
   if (carrier == CARRIER_CELL)
-    return cell_fold(c, res, x, f);
+    return cell_fold(c, mt, res, x, f);
   return op3(c, OP_BIND, carrier, 2, x, f, NULL);
 }
 
@@ -1144,10 +1193,38 @@ static const Value *case_type(Checker *c, const CtorInfo *ctor, const Env *env, 
 
 /* The fold image of V, a boundary value of a path constructor of FAM at the
    field variables (S4 R4 (a)). A field variable (a level from c->level up)
-   is its folded variable; a point constructor is its case, one of the DONE
-   cases in CORES, at the images of its fields. Path fields are mapped
+   is its folded variable; an earlier constructor is its case, one of the
+   DONE cases in CORES, at the images of its fields and intervals. Path fields are mapped
    under a fresh interval binder. ENV and LEVEL include the boundary
    fields and surrounding interval binders to preserve captures. */
+static const Value *fold_image(Checker *c, uint32_t fam, const Core *const *cores, uint32_t done, const Value *v, const Env *env, uint32_t level);
+
+/* Map a face of a boundary constructor, abstracting its remaining interval
+   arguments. At least one interval is fixed at an end, so val_ctor reduces
+   the face before fold_image visits it. */
+static const Value *fold_image_face(Checker *c, uint32_t fam, const Core *const *cores, uint32_t done, uint32_t inst, const Value *const *args, uint32_t next, const Env *env, uint32_t level) {
+  Machine *m = c->m;
+  const CtorInfo *ctor = &m->ctors[inst];
+  uint32_t q = m->families[ctor->family].param_count + ctor->field_count;
+  uint32_t n = q + ctor->interval_count;
+  const Value **a;
+  const Value *r, *image;
+  const Env *inner;
+  uint32_t i;
+  if (next == ctor->interval_count)
+    return fold_image(c, fam, cores, done, val_ctor(m, inst, args, n), env, level);
+  a = arena_alloc(m->arena, (size_t)n * sizeof *a);
+  if (a == NULL)
+    return vnul(FAIL(c, "OOM", "out of memory"));
+  for (i = 0; i < n; i++)
+    a[i] = args[i];
+  r = val_ivar(m, level);
+  a[q + next] = r;
+  inner = r == NULL ? NULL : env_push(m, env, r);
+  image = inner == NULL ? NULL : fold_image_face(c, fam, cores, done, inst, a, next + 1u, inner, level + 1u);
+  return image == NULL ? NULL : val_closure(m, VAL_PLAM, "_", NULL, env, quote_value(m, level + 1u, image));
+}
+
 static const Value *fold_image(Checker *c, uint32_t fam, const Core *const *cores, uint32_t done, const Value *v, const Env *env, uint32_t level) {
   Machine *m = c->m;
   const FamilyInfo *f = &m->families[fam];
@@ -1172,8 +1249,8 @@ static const Value *fold_image(Checker *c, uint32_t fam, const Core *const *core
      case it is the IH path at r. */
   if (v->kind == VAL_PAPP && v->dom != NULL && v->dom->kind == VAL_VAR && v->dom->nat >= c->level)
     return c->elim_motive == NULL ? v : path_apply(m, val_var(m, v->dom->nat + 1u), v->arg, ih_end(c, v->argc == 2u ? v->args[0] : NULL), ih_end(c, v->argc == 2u ? v->args[1] : NULL));
-  if (!val_is(v, OP_CTOR) || v->inst < base || v->inst - base >= done || m->ctors[v->inst].interval_count != 0u)
-    return vnul(FAIL(c, "HIT_BOUNDARY", "the fold cannot map the boundary term %s: a boundary term must be a field, a path field at an interval, or an earlier point constructor", show(c, v)));
+  if (!val_is(v, OP_CTOR) || v->inst < base || v->inst - base >= done)
+    return vnul(FAIL(c, "HIT_BOUNDARY", "the fold cannot map the boundary term %s: a boundary term must be a field, a path field at an interval, or an earlier constructor", show(c, v)));
   ci = &m->ctors[v->inst];
   acc = here(c, cores[v->inst - base]);
   for (i = 0; i < ci->field_count && acc != NULL; i++) {
@@ -1198,6 +1275,22 @@ static const Value *fold_image(Checker *c, uint32_t fam, const Core *const *core
       arg = image == NULL ? NULL : val_closure(m, VAL_PLAM, "_", NULL, env, quote_value(m, level + 1u, image));
     }
     acc = arg == NULL || acc == NULL ? NULL : apply_value(m, acc, arg);
+  }
+  for (i = 0; i < ci->interval_count && acc != NULL; i++) {
+    const Value *ends[2];
+    uint32_t q = f->param_count + ci->field_count;
+    int side;
+    for (side = 0; side < 2; side++) {
+      const Value **a = arena_alloc(m->arena, (size_t)v->argc * sizeof *a);
+      uint32_t j;
+      if (a == NULL)
+        return vnul(FAIL(c, "OOM", "out of memory"));
+      for (j = 0; j < v->argc; j++)
+        a[j] = v->args[j];
+      a[q + i] = val_iend(m, side);
+      ends[side] = fold_image_face(c, fam, cores, done, v->inst, a, i + 1u, env, level);
+    }
+    acc = ends[0] == NULL || ends[1] == NULL ? NULL : path_apply(m, acc, v->args[q + i], ends[0], ends[1]);
   }
   return acc;
 }
@@ -1602,6 +1695,17 @@ static int in_block(const Checker *c, uint32_t fam) {
   return c->self != NO_FAMILY && fam >= c->self && fam - c->self < c->self_count;
 }
 
+/* The D8 message (S3 K9): a fold over the family FAM with a wrong number
+   of cases names the family and the first constructor with no case. */
+static const Core *fold_arity(Call *k, uint32_t fam) {
+  const Machine *m = k->c->m;
+  const FamilyInfo *f = &m->families[fam];
+  uint32_t given = k->argc - 1u;
+  if (given < f->ctor_count)
+    return nul(FAIL(k->c, "TYPE_MISMATCH", "fold over %s needs one case for each of its %u constructors; found %u case%s, and the first constructor with no case is %s", f->name, (unsigned)f->ctor_count, (unsigned)given, given == 1u ? "" : "s", m->ctors[f->first_ctor + given].name));
+  return nul(FAIL(k->c, "TYPE_MISMATCH", "fold over %s needs one case for each of its %u constructors; found %u case%s", f->name, (unsigned)f->ctor_count, (unsigned)given, given == 1u ? "" : "s"));
+}
+
 /* fold takes its scrutinee last, so the scrutinee type sets the arity. */
 static const Core *rule_fold(Call *k) {
   Checker *c = k->c;
@@ -1636,7 +1740,7 @@ static const Core *rule_fold(Call *k) {
     return fold_simple(k, s, st);
   }
   s = infer(c, k->args[k->argc - 1u], &st);
-  return s == NULL ? NULL : nul(FAIL(c, "TYPE_MISMATCH", "fold needs a last argument of type Nat, List A or a domain family, and one case for each constructor; found %u arguments and a last argument of type %s", k->argc, show(c, st)));
+  return s == NULL ? NULL : val_is(st, OP_FAMILY) ? fold_arity(k, st->inst) : nul(FAIL(c, "TYPE_MISMATCH", "fold needs a last argument of type Nat, List A or a domain family, and one case for each constructor; found %u arguments and a last argument of type %s", k->argc, show(c, st)));
 }
 
 /* A cofamily type C ps (S4). */
@@ -3738,9 +3842,26 @@ static int is_carrier(const Term *t, const char *x) {
   return t->kind == TERM_VAR && strcmp(t->name, x) == 0;
 }
 
+/* D is `Path X a b`, X the carrier and a, b terms that do not name X (S3
+   K3): the field type `Path SELF a b`. check_ctor makes it a path field
+   over the earlier recursive fields a and b (path_field). NULL for an
+   other D. */
+static const Term *cell_path_type(Checker *c, const Ctor *op, const Term *d, const char *x, const Term *self) {
+  const Term *ty = d->kind == TERM_APP && d->left->kind == TERM_APP ? d->left->left : NULL;
+  const Term *head = ty != NULL && ty->kind == TERM_APP ? ty->left : NULL;
+  const Term *at;
+  if (head == NULL || head->kind != TERM_VAR || strcmp(head->name, "Path") != 0 || find_local(c, "Path") != NULL)
+    return NULL;
+  if (!is_carrier(ty->right, x) || term_names(d->left->right, x) || term_names(d->right, x))
+    return NULL;
+  at = made_term(c, op, TERM_APP, NULL, made_term(c, op, TERM_APP, NULL, head, self), d->left->right);
+  return at == NULL ? NULL : made_term(c, op, TERM_APP, NULL, at, d->right);
+}
+
 /* The field type of the 0-cell argument D over the carrier X (S2 K1, K3):
-   D itself when D does not name X, SELF for X, and `B -> SELF` for the
-   continuation `B -> X`. NULL when X is at an other place. */
+   D itself when D does not name X, SELF for X, `B -> SELF` for the
+   continuation `B -> X`, and `Path SELF a b` for `Path X a b` (S3 K3).
+   NULL when X is at an other place. */
 static const Term *cell_field_type(Checker *c, const Ctor *op, const Term *d, const char *x, const Term *self) {
   if (!term_names(d, x))
     return d;
@@ -3748,7 +3869,7 @@ static const Term *cell_field_type(Checker *c, const Ctor *op, const Term *d, co
     return self;
   if (d->kind == TERM_PI && !term_names(d->left, x) && is_carrier(d->right, x) && (d->name == NULL || strcmp(d->name, x) != 0))
     return made_term(c, op, TERM_PI, d->name, d->left, self);
-  return NULL;
+  return cell_path_type(c, op, d, x, self);
 }
 
 /* The fields of the 0-cell OP from its type `A1 -> ... -> An -> X`. A
@@ -3785,7 +3906,7 @@ static int cell_fields(Checker *c, const Ctor *op, const char *x, const Term *se
   out->fields = fields;
   out->field_count = n;
   out->result = NULL;
-  out->boundary = NULL;
+  out->boundary = op->boundary;
   out->line = op->line;
   out->col = op->col;
   return 1;

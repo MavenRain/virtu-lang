@@ -235,3 +235,28 @@ def finRet : (k : Nat) -> (c : FinC k Empty) -> Path (FinC k Empty) (ofFin k (to
     (fun (r : Fin k) => refl) (fun (v : Empty) => absurd (Path (FinC k Empty) (ofFin k (toFin k (pure v))) (pure v)) v) c
 def finPath : (k : Nat) -> Path (Type 0) (FinC k Empty) (Fin k) :=
   fun (k : Nat) => ua (FinC k Empty) (Fin k) (isoToEquiv (FinC k Empty) (Fin k) (toFin k) (ofFin k) (finSec k) (finRet k))
+-- The S3 cells with laws (K3, K5). A 1-cell is a path constructor of the
+-- cell and a 2-cell is a square. Each square has the squash0 form, so the
+-- fold case of a square has the type isSet RES. A field name is a core
+-- name (rule R4), so each name has a cell prefix.
+-- Trunc1C X is the propositional truncation as a cell and Trunc0C X is
+-- the set truncation. QuotC A R X has the relation on the parameter A,
+-- because a cell monad is a functor in X: QuotC A R Empty is the set
+-- quotient of A by R. StateC S X has the 4 laws GP, GG, PP and PG of
+-- Plotkin and Power (2002) and a square. GG uses Prod S S, because a
+-- curried continuation is not strictly positive (CELL_POSITIVE).
+cell Trunc1C (X : Type 0) := squash1C : (sq1CFrom : X) -> (sq1CTo : X) -> (i : I) -> X [ ~i -> sq1CFrom, i -> sq1CTo ]
+cell Trunc0C (X : Type 0) := squash0C : (sq0CFrom : X) -> (sq0CTo : X) -> (sq0CLeft : Path X sq0CFrom sq0CTo) -> (sq0CRight : Path X sq0CFrom sq0CTo) -> (i : I) -> (j : I) -> X
+  [ ~i -> sq0CLeft @ j, i -> sq0CRight @ j, ~j -> sq0CFrom, j -> sq0CTo ]
+cell QuotC (A : Type 0) (R : A -> A -> Type 0) (X : Type 0) := qinC : (qinCOf : A) -> X
+  | quotEqC : (qCA : A) -> (qCB : A) -> (qCR : R qCA qCB) -> (i : I) -> X [ ~i -> qinC A R X qCA, i -> qinC A R X qCB ]
+  | quotSquashC : (qsCFrom : X) -> (qsCTo : X) -> (qsCLeft : Path X qsCFrom qsCTo) -> (qsCRight : Path X qsCFrom qsCTo) -> (i : I) -> (j : I) -> X
+    [ ~i -> qsCLeft @ j, i -> qsCRight @ j, ~j -> qsCFrom, j -> qsCTo ]
+cell StateC (S : Type 0) (X : Type 0) := getC : (getCK : S -> X) -> X
+  | putC : (putCS : S) -> (putCT : X) -> X
+  | gpC : (gpCT : X) -> (i : I) -> X [ ~i -> getC S X (fun (s : S) => putC S X s gpCT), i -> gpCT ]
+  | ggC : (ggCK : Prod S S -> X) -> (i : I) -> X [ ~i -> getC S X (fun (s : S) => getC S X (fun (u : S) => ggCK (pair s u))), i -> getC S X (fun (s : S) => ggCK (pair s s)) ]
+  | ppC : (ppCA : S) -> (ppCB : S) -> (ppCT : X) -> (i : I) -> X [ ~i -> putC S X ppCA (putC S X ppCB ppCT), i -> putC S X ppCB ppCT ]
+  | pgC : (pgCA : S) -> (pgCK : S -> X) -> (i : I) -> X [ ~i -> putC S X pgCA (getC S X pgCK), i -> putC S X pgCA (pgCK pgCA) ]
+  | stSquashC : (stCFrom : X) -> (stCTo : X) -> (stCLeft : Path X stCFrom stCTo) -> (stCRight : Path X stCFrom stCTo) -> (i : I) -> (j : I) -> X
+    [ ~i -> stCLeft @ j, i -> stCRight @ j, ~j -> stCFrom, j -> stCTo ]

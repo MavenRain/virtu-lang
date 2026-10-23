@@ -1,0 +1,2 @@
+-- A curried continuation is not strictly positive in a cell op.
+cell GG2 (S : Type 0) (X : Type 0) := gg2 : (gg2K : S -> S -> X) -> X

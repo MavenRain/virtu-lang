@@ -1,0 +1,2 @@
+-- A fold of Trunc0C with no square case.
+def bad : Trunc0C Nat -> Nat := fun (t : Trunc0C Nat) => fold (fun (n : Nat) => n) t

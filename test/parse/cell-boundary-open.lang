@@ -1,0 +1,1 @@
+cell Op (X : Type 0) := opq : (opqA : X) -> (i : I) -> X [ ~i -> opqA, i -> opqA

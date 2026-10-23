@@ -84,3 +84,10 @@ cell-duplicate.lang CELL_DUPLICATE
 cell-fold-missing.lang TYPE_MISMATCH
 cell-bind-mismatch.lang TYPE_MISMATCH
 family-and-program.lang REFUSE_DATA
+cell-path-end.lang PATH_END
+cell-noset.lang PATH_UIP
+cell-nosquare.lang TYPE_MISMATCH
+cell-curried.lang CELL_POSITIVE
+cell-pure-boundary.lang TYPE_INFER
+cell-three-intervals.lang HIT_BOUNDARY
+cell-overlap.lang SYSTEM_OVERLAP

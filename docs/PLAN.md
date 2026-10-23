@@ -134,6 +134,44 @@ the S2 kickoff proposals K1 to K12 are all (a). These are now rulings:
   about 123, json 32 builds, build refusals 4, regressions 6, printer 2,
   path regressions 148.
 
+### USER ruling (S3 kickoff)
+
+On 2026-10-22 the USER said: "K1 to K13 all (a)". Thus the S3 kickoff
+proposals K1 to K13 are all (a). These are now rulings:
+
+- K1 an n-cell in a `cell` has the type form `op : (a : A) -> ... ->
+  (i : I) [-> (j : I)] -> X [ faces ]`. The parser reads the system after
+  the op type.
+- K2 a path op is a path constructor of the cell family. `pure` stays
+  last and cannot be in a boundary. `bind` and `map` keep the path cell at
+  the images. The fold has a point case for a 0-cell, a path case for a
+  1-cell and a square case (isSet of the result) for a 2-cell.
+- K3 domain/domain.lang gets `Trunc1C`, `Trunc0C` and `QuotC A R X`, with
+  the maps to and from `Trunc1`, `Trunc0` and `Quot` in
+  examples/ncell.lang. If the kernel refuses a `Path X x y` op field,
+  cell_field_type gets a Path over the carrier.
+- K4 there is no new set-target rule. The square case refuses a fold into
+  a type that is not a set.
+- K5 domain/domain.lang gets `StateC S X` with the 0-cells `getC` and
+  `putC`, the 4 laws GP, GG, PP and PG as 1-cells (GG over `Prod S S`) and
+  the `Trunc0` square. examples/state.lang gives the fold into
+  `S -> Prod S X`, the inverse and the two round trips.
+- K6 examples/loc.lang gives `Null2`, the nullification at `Fin 2`
+  (Rijke, Shulman and Spitters 2020, Definition 2.14), and its fold into
+  `Trunc1`.
+- K7 the fold_image fix of dbc8e1a stays.
+- K8 F1 to F3 go to a later kernel slice.
+- K9 a missing fold case message names the cell or HIT case. `NAME.pure`
+  stays. The build tries `bind (pure a) f` and records the result.
+- K10 S3 adds 3 examples, 1 parse refusal file, 7 check refusal files,
+  about 12 evals and 6 path regressions. No new host harness.
+- K11 S3 has 10 mutants, P1 to P10.
+- K12 the predicted S3 gate is: examples 35, parse 15, check 93, evals
+  about 140, json 35 builds or fewer, build refusals 5, regressions 6,
+  printer 2, path regressions 164.
+- K13 PLAN 2.2 cites Rijke, Shulman and Spitters 2020 for the
+  localization HIT. The State row says "for sets S and X".
+
 ## 2. The type constructors
 
 ### 2.1 The ambient category
@@ -180,7 +218,9 @@ is accessible exactly when it is the localization at a small set of maps
 kickoff C3). Thus the idempotent cell monads
 are the accessible localizations, and CTT gives each one as a HIT
 (Christensen, Opie, Rijke and Scoccola, "Localization in homotopy type
-theory", 2020). The non-idempotent cell monads are the free algebra monads
+theory", 2020). The HIT constructors are in Rijke, Shulman and Spitters,
+"Modalities in homotopy type theory", 2020, Definition 2.14 and Theorem
+2.18 (S3 kickoff C10). The non-idempotent cell monads are the free algebra monads
 of the signatures.
 
 | Cell monad | Cells | Use in this plan |
@@ -194,7 +234,7 @@ of the signatures.
 | `Trunc1 X` | one 1-cell `squash : (x y : T X) -> Path (T X) x y` | the propositional truncation |
 | `Trunc0 X` | one 2-cell | the set truncation |
 | `Quot X R` | one 1-cell for each `R x y`, with `Trunc0` | quotients |
-| `State S X` | 0-cells `get` and `put`, 1-cells for the laws of state, with `Trunc0` | the program monad (2.5) |
+| `State S X` | 0-cells `get` and `put`, 1-cells for the laws of state, with `Trunc0`, for sets `S` and `X` | the program monad (2.5) |
 
 The S1 kickoff checked the first row below (C1). The second row is a note:
 

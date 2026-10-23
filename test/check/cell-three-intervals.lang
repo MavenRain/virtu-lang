@@ -1,0 +1,2 @@
+-- A cell op has at most 2 interval fields.
+cell C3 (X : Type 0) := c3 : (c3X : X) -> (i : I) -> (j : I) -> (k : I) -> X [ ~i -> c3X, i -> c3X, ~j -> c3X, j -> c3X, ~k -> c3X, k -> c3X ]

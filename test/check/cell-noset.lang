@@ -1,0 +1,4 @@
+-- A fold of Trunc0C into S1 (not a set). The square case has no isSet
+-- proof: p @ j is a try, and its face at i is not q @ j.
+def toCircle : Trunc0C Nat -> S1 :=
+  fun (t : Trunc0C Nat) => fold (fun (x : S1) (y : S1) (p : Path S1 x y) (q : Path S1 x y) => fun (i : I) => fun (j : I) => p @ j) (fun (n : Nat) => base) t

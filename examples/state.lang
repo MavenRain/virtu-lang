@@ -1,0 +1,58 @@
+-- The state cell with laws (S3, K5). StateC S X in the domain has the 4
+-- laws GP, GG, PP and PG and a square. S and X are sets here (S = X =
+-- Nat). run folds a program into a function from S to S * X. Each law
+-- case is refl, because run gives the same function at the two ends.
+-- The square case uses isSetNat at each component.
+def unitSC : Nat -> StateC Nat Nat := fun (v : Nat) => pure v
+def run : StateC Nat Nat -> Nat -> Prod Nat Nat :=
+  fun (t : StateC Nat Nat) => fold
+    (fun (k : Nat -> Nat -> Prod Nat Nat) => fun (s : Nat) => k s s)
+    (fun (a : Nat) (r : Nat -> Prod Nat Nat) => fun (s : Nat) => r a)
+    (fun (r : Nat -> Prod Nat Nat) => refl)
+    (fun (k : Prod Nat Nat -> Nat -> Prod Nat Nat) => refl)
+    (fun (a : Nat) (b : Nat) (r : Nat -> Prod Nat Nat) => refl)
+    (fun (a : Nat) (k : Nat -> Nat -> Prod Nat Nat) => refl)
+    (fun (x : Nat -> Prod Nat Nat) (y : Nat -> Prod Nat Nat) (p : Path (Nat -> Prod Nat Nat) x y) (q : Path (Nat -> Prod Nat Nat) x y) => fun (i : I) => fun (j : I) => fun (s : Nat) =>
+       pair (isSetNat (first (x s)) (first (y s)) (fun (k : I) => first ((p @ k) s)) (fun (k : I) => first ((q @ k) s)) @ i @ j)
+            (isSetNat (second (x s)) (second (y s)) (fun (k : I) => second ((p @ k) s)) (fun (k : I) => second ((q @ k) s)) @ i @ j))
+    (fun (v : Nat) => fun (s : Nat) => pair s v)
+    t
+-- A top-level StateC value holds a function, which has no JSON form.
+-- Thus each program takes a step d.
+def ex : (d : Nat) -> StateC Nat Nat := fun (d : Nat) => getC Nat Nat (fun (s : Nat) => putC Nat Nat (natAdd s d) (unitSC (natMul s 10)))
+def exAt4 : Prod Nat Nat := run (ex 5) 4
+def after : (d : Nat) -> StateC Nat Nat := fun (d : Nat) => bind (ex d) (fun (v : Nat) => putC Nat Nat v (unitSC (natAdd v 1)))
+def afterAt4 : Prod Nat Nat := run (after 5) 4
+-- A law path moves the program, but run is the same at each end.
+def gpAt : Prod Nat Nat := run (gpC Nat Nat (unitSC 7) i0) 2
+def inv : (Nat -> Prod Nat Nat) -> StateC Nat Nat :=
+  fun (f : Nat -> Prod Nat Nat) => getC Nat Nat (fun (s : Nat) => putC Nat Nat (first (f s)) (unitSC (second (f s))))
+def exFirst : Nat := first (run (inv (fun (s : Nat) => pair (natAdd s 1) s)) 7)
+-- Round trip 1: run (inv f) = f for a variable f, by refl.
+def sect : (f : Nat -> Prod Nat Nat) -> Path (Nat -> Prod Nat Nat) (run (inv f)) f := fun (f : Nat -> Prod Nat Nat) => refl
+def sectAt : Prod Nat Nat := (sect (fun (s : Nat) => pair s 3) @ i0) 2
+-- Round trip 2, inv (run t) = t: the pure case and the 2 point cases of
+-- the elim. Each case is a chain of law paths.
+def retAt : (v : Nat) -> Path (StateC Nat Nat) (inv (run (unitSC v))) (unitSC v) :=
+  fun (v : Nat) => fun (i : I) => gpC Nat Nat (unitSC v) i
+def roundAt : Prod Nat Nat := run (retAt 6 @ i0) 3
+def getAt : (k : Nat -> StateC Nat Nat) -> (ih : (s : Nat) -> Path (StateC Nat Nat) (inv (run (k s))) (k s)) ->
+  Path (StateC Nat Nat) (inv (run (getC Nat Nat k))) (getC Nat Nat k) :=
+  fun (k : Nat -> StateC Nat Nat) (ih : (s : Nat) -> Path (StateC Nat Nat) (inv (run (k s))) (k s)) =>
+    trans (StateC Nat Nat) (inv (run (getC Nat Nat k))) (getC Nat Nat (fun (s : Nat) => inv (run (k s)))) (getC Nat Nat k)
+      (fun (i : I) => ggC Nat Nat (fun (st : Prod Nat Nat) => putC Nat Nat (first (run (k (first st)) (second st))) (unitSC (second (run (k (first st)) (second st))))) (~i))
+      (fun (i : I) => getC Nat Nat (fun (s : Nat) => ih s @ i))
+def pc : StateC Nat Nat -> Nat -> StateC Nat Nat :=
+  fun (t : StateC Nat Nat) (a : Nat) => putC Nat Nat (first (run t a)) (unitSC (second (run t a)))
+def putAt : (a : Nat) -> (t : StateC Nat Nat) -> (ih : Path (StateC Nat Nat) (inv (run t)) t) ->
+  Path (StateC Nat Nat) (inv (run (putC Nat Nat a t))) (putC Nat Nat a t) :=
+  fun (a : Nat) (t : StateC Nat Nat) (ih : Path (StateC Nat Nat) (inv (run t)) t) =>
+    trans (StateC Nat Nat) (inv (run (putC Nat Nat a t))) (getC Nat Nat (fun (s : Nat) => putC Nat Nat s (pc t a))) (putC Nat Nat a t)
+      (fun (i : I) => getC Nat Nat (fun (s : Nat) => ppC Nat Nat s (first (run t a)) (unitSC (second (run t a))) (~i)))
+      (trans (StateC Nat Nat) (getC Nat Nat (fun (s : Nat) => putC Nat Nat s (pc t a))) (pc t a) (putC Nat Nat a t)
+        (fun (i : I) => gpC Nat Nat (pc t a) i)
+        (trans (StateC Nat Nat) (pc t a) (putC Nat Nat a (pc t a)) (putC Nat Nat a t)
+          (fun (i : I) => ppC Nat Nat a (first (run t a)) (unitSC (second (run t a))) (~i))
+          (trans (StateC Nat Nat) (putC Nat Nat a (pc t a)) (putC Nat Nat a (inv (run t))) (putC Nat Nat a t)
+            (fun (i : I) => pgC Nat Nat a (pc t) (~i))
+            (fun (i : I) => putC Nat Nat a (ih @ i)))))

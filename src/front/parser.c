@@ -564,9 +564,10 @@ static int parse_cofamily(Parser *p, Decl *d) {
   return d->body != NULL;
 }
 
-/* `cell NAME params := op : T | ...` (S2 K1): the 0-cells over the carrier,
-   the last parameter. Each 0-cell has its type in RESULT and no fields.
-   The checker examines the types and makes the family (K3). */
+/* `cell NAME params := op : T [system] | ...` (S2 K1, S3 K1): the cells
+   over the carrier, the last parameter. Each cell has its type in RESULT
+   and no fields. An n-cell has a system after its type. The checker
+   examines the types and makes the family (K3). */
 static int parse_cell(Parser *p, Decl *d) {
   bump(p);
   d->kind = DECL_CELL;
@@ -595,6 +596,8 @@ static int parse_cell(Parser *p, Decl *d) {
     if (ctor->name == NULL || !expect(p, TOK_COLON, "':'")) return 0;
     ctor->result = parse_term(p);
     if (ctor->result == NULL) return 0;
+    ctor->boundary = at(p, TOK_LBRACKET) ? parse_system(p) : NULL;
+    if (ctor->boundary == NULL && p->diag->set) return 0;
   } while (eat(p, TOK_BAR));
   d->ctors = ctors;
   d->ctor_count = count;

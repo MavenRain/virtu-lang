@@ -532,6 +532,67 @@ int main(void) {
     "  | hhSquare (hhU : HH) (hhV : Path HH hhU hhU) (i : I) (j : I) [ ~i -> hhNode hhU hhU (fun (k : I) => hhV @ (j /\\ ~j /\\ k /\\ ~k)),\n"
     "      i -> hhNode hhU hhU (fun (k : I) => hhV @ (j /\\ ~j /\\ k /\\ ~k)), ~j -> hhNode hhU hhU refl, j -> hhNode hhU hhU refl ]\n",
     "def original : HH -> HH := fun (z : HH) => fold hhBase (fun (x : HH) (y : HH) (p : Path HH x y) => hhNode x y p) (fun (x : HH) (p : Path HH x x) => fun (a : I) => fun (b : I) => hhSquare x p a b) z\n");
+  /* S3 K10: cell source round trips with a boundary. The ends of each path
+     come from the cell system, so the printed type must check again. */
+  failed += !roundtrip("Trunc1C squash path round-trips",
+    "def original : (a : Trunc1C Nat) -> (b : Trunc1C Nat) -> Path (Trunc1C Nat) a b := "
+    "fun (a : Trunc1C Nat) (b : Trunc1C Nat) => fun (i : I) => squash1C Nat a b i\n");
+  failed += !roundtrip("Trunc0C squash square round-trips",
+    "def original : (a : Trunc0C Nat) -> (b : Trunc0C Nat) -> (p : Path (Trunc0C Nat) a b) -> (q : Path (Trunc0C Nat) a b) -> "
+    "Path (Path (Trunc0C Nat) a b) p q := "
+    "fun (a : Trunc0C Nat) (b : Trunc0C Nat) (p : Path (Trunc0C Nat) a b) (q : Path (Trunc0C Nat) a b) => "
+    "fun (i : I) => fun (j : I) => squash0C Nat a b p q i j\n");
+  failed += !roundtrip("QuotC relation path round-trips",
+    "def original : (R : Nat -> Nat -> Type 0) -> (a : Nat) -> (b : Nat) -> (r : R a b) -> "
+    "Path (QuotC Nat R Nat) (qinC Nat R Nat a) (qinC Nat R Nat b) := "
+    "fun (R : Nat -> Nat -> Type 0) (a : Nat) (b : Nat) (r : R a b) => fun (i : I) => quotEqC Nat R Nat a b r i\n");
+  failed += !roundtrip("StateC law path with a continuation round-trips",
+    "def original : (t : StateC Nat Nat) -> Path (StateC Nat Nat) (getC Nat Nat (fun (s : Nat) => putC Nat Nat s t)) t := "
+    "fun (t : StateC Nat Nat) => fun (i : I) => gpC Nat Nat t i\n");
+  /* S3 P6: map through a path cell at a variable interval keeps the interval
+     binder of the rebuilt case. */
+  failed += !roundtrip("map through a path cell at a variable interval round-trips",
+    "def original : (a : Trunc1C Nat) -> (b : Trunc1C Nat) -> "
+    "Path (Trunc1C Nat) (map (fun (n : Nat) => natAdd n 1) a) (map (fun (n : Nat) => natAdd n 1) b) := "
+    "fun (a : Trunc1C Nat) (b : Trunc1C Nat) => fun (i : I) => map (fun (n : Nat) => natAdd n 1) (squash1C Nat a b i)\n");
+  /* S3 P5: a square fold through a neutral case at neutral intervals. The
+     printed form applies the case at i, then j; with the order swapped, the
+     replay fails at the ends of the declared square. */
+  failed += !roundtrip("square fold through a neutral case keeps the face order",
+    "def f0 : ((a : Trunc0 Nat) -> (b : Trunc0 Nat) -> (p : Path (Trunc0 Nat) a b) -> (q : Path (Trunc0 Nat) a b) -> Path (Path (Trunc0 Nat) a b) p q) -> Trunc0C Nat -> Trunc0 Nat := "
+    "fun (sq : (a : Trunc0 Nat) -> (b : Trunc0 Nat) -> (p : Path (Trunc0 Nat) a b) -> (q : Path (Trunc0 Nat) a b) -> Path (Path (Trunc0 Nat) a b) p q) (t : Trunc0C Nat) => "
+    "fold sq (fun (v : Nat) => trunc0 Nat v) t\n"
+    "def original : (sq : (a : Trunc0 Nat) -> (b : Trunc0 Nat) -> (p : Path (Trunc0 Nat) a b) -> (q : Path (Trunc0 Nat) a b) -> Path (Path (Trunc0 Nat) a b) p q) -> "
+    "(a : Trunc0C Nat) -> (b : Trunc0C Nat) -> (p : Path (Trunc0C Nat) a b) -> (q : Path (Trunc0C Nat) a b) -> "
+    "Path (Path (Trunc0 Nat) (f0 sq a) (f0 sq b)) (fun (k : I) => f0 sq (p @ k)) (fun (k : I) => f0 sq (q @ k)) := "
+    "fun (sq : (a : Trunc0 Nat) -> (b : Trunc0 Nat) -> (p : Path (Trunc0 Nat) a b) -> (q : Path (Trunc0 Nat) a b) -> Path (Path (Trunc0 Nat) a b) p q) "
+    "(a : Trunc0C Nat) (b : Trunc0C Nat) (p : Path (Trunc0C Nat) a b) (q : Path (Trunc0C Nat) a b) => "
+    "fun (i : I) => fun (j : I) => f0 sq (squash0C Nat a b p q i j)\n");
+  /* A square boundary can contain earlier paths and squares at neutral
+     intervals. Map their cases, including the endpoint paths of a square. */
+  {
+    const char *coherence =
+      "cell Coher2 (X : Type 0) := c2b : (c2bx : X) -> X\n"
+      " | c2l : (c2lx : X) -> (i : I) -> X [ ~i -> c2b X c2lx, i -> c2b X c2lx ]\n"
+      " | c2s : (c2sx : X) -> (i : I) -> (j : I) -> X [ ~i -> c2l X c2sx j, i -> c2l X c2sx j, ~j -> c2b X c2sx, j -> c2b X c2sx ]\n"
+      " | c2t : (c2tx : X) -> (i : I) -> (j : I) -> X [ ~i -> c2s X c2tx j j, i -> c2l X c2tx j, ~j -> c2b X c2tx, j -> c2b X c2tx ]\n";
+    failed += !domain_roundtrip("cell map preserves earlier path and square boundary cases", coherence,
+      "def f2 : Coher2 Nat -> Coher2 Bool := fun (t : Coher2 Nat) => map (fun (n : Nat) => true) t\n"
+      "def original : (x : Coher2 Nat) -> Path (Path (Coher2 Bool) (c2b Bool (f2 x)) (c2b Bool (f2 x))) "
+      "(fun (j : I) => c2s Bool (f2 x) j j) (fun (j : I) => c2l Bool (f2 x) j) := "
+      "fun (x : Coher2 Nat) => fun (i : I) => fun (j : I) => f2 (c2t Nat x i j)\n");
+    failed += !domain_roundtrip("cell bind preserves earlier path and square boundary cases", coherence,
+      "def f2 : Coher2 Nat -> Coher2 Bool := fun (t : Coher2 Nat) => bind t (fun (n : Nat) => pure true)\n"
+      "def original : (x : Coher2 Nat) -> Path (Path (Coher2 Bool) (c2b Bool (f2 x)) (c2b Bool (f2 x))) "
+      "(fun (j : I) => c2s Bool (f2 x) j j) (fun (j : I) => c2l Bool (f2 x) j) := "
+      "fun (x : Coher2 Nat) => fun (i : I) => fun (j : I) => f2 (c2t Nat x i j)\n");
+  }
+  failed += !domain_refuses("earlier path boundary still checks unequal square faces",
+    "cell Disk (X : Type 0) := db : X\n"
+    " | dl : (i : I) -> X [ ~i -> db X, i -> db X ]\n"
+    " | ds : (i : I) -> (j : I) -> X [ ~i -> dl X j, i -> db X, ~j -> db X, j -> db X ]\n",
+    "def bad : Disk Nat -> S1 := fun (t : Disk Nat) => fold base (fun (i : I) => loop i) "
+    "(fun (i : I) => fun (j : I) => loop j) (fun (n : Nat) => base) t\n", "PATH_UIP");
   /* S5b item 7: the refutation of decEqFin is a closure. Its printed form
      must check again at the declared type (J15: Fin 0 and Unit swapped in
      the line fail with TYPE_MISMATCH at i0). */
