@@ -1,0 +1,3 @@
+-- bind keeps the cell: a bind from OptionC cannot give an Either (S2 K4).
+def po : OptionC Nat := pure 3
+def cross : Either Bool Nat := bind po (fun (n : Nat) => pure n)

@@ -76,3 +76,11 @@ int64-removed.lang NAME_UNKNOWN
 json-removed.lang NAME_UNKNOWN
 log-removed.lang NAME_UNKNOWN
 io-removed.lang NAME_UNKNOWN
+cell-codomain.lang CELL_CODOMAIN
+cell-positive.lang CELL_POSITIVE
+cell-carrier.lang CELL_CARRIER
+cell-pure.lang CELL_PURE
+cell-duplicate.lang CELL_DUPLICATE
+cell-fold-missing.lang TYPE_MISMATCH
+cell-bind-mismatch.lang TYPE_MISMATCH
+family-and-program.lang REFUSE_DATA

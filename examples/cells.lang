@@ -1,0 +1,30 @@
+-- Cells (S2, K10): pure, bind, map and fold over the library cells. The
+-- maps from a cell to its builtin and back, at closed values.
+def po : OptionC Nat := pure 3
+def bo1 : OptionC Nat := bind po (fun (n : Nat) => pure (natAdd n 1))
+def bo2 : OptionC Nat := bind (noneC Nat) (fun (n : Nat) => pure (natAdd n 1))
+def cbo1 : Nat := fold 0 (fun (v : Nat) => v) bo1
+def cbo2 : Nat := fold 0 (fun (v : Nat) => v) bo2
+def eok : Either Bool Nat := pure 3
+def eerr : Either Bool Nat := throw Bool Nat true
+def me : Either Bool Nat := map (fun (n : Nat) => natMul n 2) eok
+def ce : Nat := fold (fun (e : Bool) => 0) (fun (v : Nat) => v) me
+def be : Either Bool Nat := bind eerr (fun (n : Nat) => pure (natAdd n 1))
+def cbe : Nat := fold (fun (e : Bool) => 100) (fun (v : Nat) => v) be
+def xs : ListC Nat Nat := consC Nat Nat 1 (consC Nat Nat 2 (pure 0))
+def bl : ListC Nat Nat := bind xs (fun (v : Nat) => consC Nat Nat 9 (pure v))
+def cbl : Nat := fold (fun (a : Nat) (r : Nat) => natAdd a r) (fun (v : Nat) => v) bl
+def ml : ListC Nat Bool := map (fun (v : Nat) => natEq v 0) xs
+def cml : Nat := fold (fun (a : Nat) (r : Nat) => natAdd a r) (fun (v : Bool) => natAdd (finVal 2 v) 10) ml
+def twice : NatC Nat := succC Nat (succC Nat (pure 5))
+def cn : Nat := fold (fun (r : Nat) => natAdd r 10) (fun (v : Nat) => v) twice
+def fc : FinC 3 Nat := bind (pickC 3 Nat 2) (fun (v : Nat) => pure v)
+def cfc : Nat := fold (fun (r : Fin 3) => finVal 3 r) (fun (v : Nat) => v) fc
+def optBack : Option Nat := toOption Nat (ofOption Nat (some 3))
+def optNone : Option Nat := toOption Nat (noneC Nat)
+def sumBack : Sum Bool Nat := toSum Bool Nat (ofSum Bool Nat (inr 4))
+def sumErr : Sum Bool Nat := toSum Bool Nat (throw Bool Nat false)
+def listBack : List Nat := toList Nat (ofList Nat (cons 1 (cons 2 nil)))
+def natBack : (n : Nat) -> Nat := fun (n : Nat) => cellToNat (cellOfNat n)
+def finBack : (r : Fin 3) -> Fin 3 := fun (r : Fin 3) => toFin 3 (ofFin 3 r)
+def sumMap : Sum Bool Nat := map (fun (n : Nat) => natAdd n 1) sumBack

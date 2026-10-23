@@ -1,0 +1,8 @@
+-- The FinC cell (S2, K5 and K6). finPath is the path FinC k Empty = Fin k
+-- by ua and isoToEquiv. Transport along it goes in the two directions.
+def toCode : Fin 3 := transp (fun (i : I) => (finPath 3) @ i) i0 (pickC 3 Empty 1)
+def toCell : FinC 3 Empty := transp (fun (i : I) => (finPath 3) @ (~i)) i0 2
+def fwd : Path (Fin 3) toCode 1 := refl
+def bwd : Path (FinC 3 Empty) toCell (pickC 3 Empty 2) := refl
+def finCode : (r : Fin 4) -> Fin 4 := fun (r : Fin 4) => transp (fun (i : I) => (finPath 4) @ i) i0 (ofFin 4 r)
+def cellCode : (r : Fin 4) -> Fin 4 := fun (r : Fin 4) => toFin 4 (transp (fun (i : I) => (finPath 4) @ (~i)) i0 r)

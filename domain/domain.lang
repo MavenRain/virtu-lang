@@ -192,3 +192,46 @@ def decEqProd : (A : Type 0) -> (B : Type 0) -> ((a : A) -> (b : A) -> Dec (Path
     either (fun (p : Path A (witness x) (witness y)) => either (fun (q : Path B (payload x) (payload y)) => inl (fun (i : I) => pack (p @ i) (q @ i))) (fun (nq : Not (Path B (payload x) (payload y))) => inr (fun (r : Path ((e : A) * B) x y) => nq (fun (i : I) => payload (r @ i)))) (db (payload x) (payload y))) (fun (np : Not (Path A (witness x) (witness y))) => inr (fun (r : Path ((e : A) * B) x y) => np (fun (i : I) => witness (r @ i)))) (da (witness x) (witness y))
 def decEqSigmaFin : (a : Nat) -> (b : Nat) -> (x : (e : Fin a) * Fin b) -> (y : (e : Fin a) * Fin b) -> Dec (Path ((e : Fin a) * Fin b) x y) :=
   fun (a : Nat) (b : Nat) => decEqProd (Fin a) (Fin b) (decEqFin a) (decEqFin b)
+-- Cell library (S2, rulings K5 and K6). Each cell is a free monad on its
+-- carrier X (the last parameter). pure is implicit. A name gets a C when
+-- a kernel builtin has the plan name. The builtins keep their names.
+-- Each pair toB and ofB maps a cell to its builtin B and back.
+-- cellToNat and cellOfNat are the pair for NatC, because the example
+-- dec.lang has a def toNat.
+-- Only FinC has a path to its builtin (finPath, by ua and isoToEquiv).
+-- The kernel does not give the other 4 paths (OptionC V = Option V,
+-- Either E V = Sum E V, ListC A Unit = List A, NatC Unit = Nat):
+-- F1. option, either and the Nat and List fold have a result type that
+--     is not dependent, and elim takes only a domain family. Thus the
+--     round trip on the builtin side has no proof.
+-- F2. Unit has no eta rule. Thus the round trip on the cell side of
+--     ListC A Unit and NatC Unit fails at the pure case.
+-- F3. The Nat fold at succ x does not reduce when x is neutral.
+-- These 4 paths are an open point for a later kernel slice.
+cell Either (E : Type 0) (X : Type 0) := throw : E -> X
+cell Free (A : Type 0) (B : A -> Type 0) (X : Type 0) := op : (opShape : A) -> (B opShape -> X) -> X
+cell OptionC (X : Type 0) := noneC : X
+cell ListC (A : Type 0) (X : Type 0) := consC : A -> X -> X
+cell NatC (X : Type 0) := succC : X -> X
+cell FinC (k : Nat) (X : Type 0) := pickC : Fin k -> X
+def toOption : (V : Type 0) -> OptionC V -> Option V := fun (V : Type 0) (c : OptionC V) => fold none (fun (v : V) => some v) c
+def ofOption : (V : Type 0) -> Option V -> OptionC V := fun (V : Type 0) (o : Option V) => option (noneC V) (fun (v : V) => pure v) o
+def retOption : (V : Type 0) -> (c : OptionC V) -> Path (OptionC V) (ofOption V (toOption V c)) c :=
+  fun (V : Type 0) (c : OptionC V) => elim (fun (d : OptionC V) => Path (OptionC V) (ofOption V (toOption V d)) d) refl (fun (v : V) => refl) c
+def toSum : (E : Type 0) -> (V : Type 0) -> Either E V -> Sum E V := fun (E : Type 0) (V : Type 0) (c : Either E V) => fold (fun (e : E) => inl e) (fun (v : V) => inr v) c
+def ofSum : (E : Type 0) -> (V : Type 0) -> Sum E V -> Either E V := fun (E : Type 0) (V : Type 0) (s : Sum E V) => either (fun (e : E) => throw E V e) (fun (v : V) => pure v) s
+def retSum : (E : Type 0) -> (V : Type 0) -> (c : Either E V) -> Path (Either E V) (ofSum E V (toSum E V c)) c :=
+  fun (E : Type 0) (V : Type 0) (c : Either E V) => elim (fun (d : Either E V) => Path (Either E V) (ofSum E V (toSum E V d)) d) (fun (e : E) => refl) (fun (v : V) => refl) c
+def toList : (A : Type 0) -> ListC A Unit -> List A := fun (A : Type 0) (c : ListC A Unit) => fold (fun (a : A) (r : List A) => cons a r) (fun (u : Unit) => nil) c
+def ofList : (A : Type 0) -> List A -> ListC A Unit := fun (A : Type 0) (l : List A) => fold (fun (a : A) (r : ListC A Unit) => consC A Unit a r) (pure unit) l
+def cellToNat : NatC Unit -> Nat := fun (c : NatC Unit) => fold (fun (r : Nat) => succ r) (fun (u : Unit) => 0) c
+def cellOfNat : Nat -> NatC Unit := fun (n : Nat) => fold (fun (r : NatC Unit) => succC Unit r) (pure unit) n
+def toFin : (k : Nat) -> FinC k Empty -> Fin k :=
+  fun (k : Nat) (c : FinC k Empty) => fold (fun (r : Fin k) => r) (fun (v : Empty) => absurd (Fin k) v) c
+def ofFin : (k : Nat) -> Fin k -> FinC k Empty := fun (k : Nat) (r : Fin k) => pickC k Empty r
+def finSec : (k : Nat) -> (r : Fin k) -> Path (Fin k) (toFin k (ofFin k r)) r := fun (k : Nat) (r : Fin k) => refl
+def finRet : (k : Nat) -> (c : FinC k Empty) -> Path (FinC k Empty) (ofFin k (toFin k c)) c :=
+  fun (k : Nat) (c : FinC k Empty) => elim (fun (d : FinC k Empty) => Path (FinC k Empty) (ofFin k (toFin k d)) d)
+    (fun (r : Fin k) => refl) (fun (v : Empty) => absurd (Path (FinC k Empty) (ofFin k (toFin k (pure v))) (pure v)) v) c
+def finPath : (k : Nat) -> Path (Type 0) (FinC k Empty) (Fin k) :=
+  fun (k : Nat) => ua (FinC k Empty) (Fin k) (isoToEquiv (FinC k Empty) (Fin k) (toFin k) (ofFin k) (finSec k) (finRet k))

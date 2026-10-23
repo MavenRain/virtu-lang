@@ -778,6 +778,8 @@ static const Value *reduce_pure(Machine *m, uint32_t inst, const Value *x) {
     return make(m, VAL_OP, OP_CONS, 0, 2, x, constant(m, OP_NIL), NULL);
   case CARRIER_SUM:
     return make(m, VAL_OP, OP_INR, 0, 1, x, NULL, NULL);
+  case CARRIER_CELL:
+    break;
   }
   return internal(m, "an unknown carrier");
 }
@@ -807,6 +809,8 @@ static const Value *reduce_map(Machine *m, uint32_t inst, const Value *const *a,
     return val_is(x, OP_INR) ? make(m, VAL_OP, OP_INR, 0, 1, apply_value(m, a[0], x->args[0]), NULL, NULL) : x;
   case CARRIER_LIST:
     return map_list(m, a[0], x);
+  case CARRIER_CELL:
+    break;
   }
   return internal(m, "an unknown carrier");
 }
@@ -854,6 +858,8 @@ static const Value *reduce_bind(Machine *m, uint32_t inst, const Value *const *a
     return val_is(x, OP_INR) ? apply_value(m, a[1], x->args[0]) : x;
   case CARRIER_LIST:
     return bind_list(m, a, n);
+  case CARRIER_CELL:
+    break;
   }
   return internal(m, "an unknown carrier");
 }
@@ -915,7 +921,7 @@ static const Value *fold_res(const Machine *m, uint32_t family, const Value *con
 /* The sort of the recursive field FIELD of a constructor of FAMILY: the
    head of its type, a sort of the block (S6). */
 static uint32_t field_sort(const FieldInfo *field, uint32_t family) {
-  const Core *t = field->path ? field->type->b : field->type;
+  const Core *t = field->path || field->continuation ? field->type->b : field->type;
   return t != NULL && t->kind == CORE_OP && t->op == OP_FAMILY ? t->inst : family;
 }
 
@@ -945,6 +951,7 @@ static const Value *fold_hcomp(Machine *m, uint32_t family, const Value *const *
 static const Value *fold_path_field(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *x, uint32_t field);
 static const Value *fold_square(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *x, const Value *s);
 static const Value *elim_family(Machine *m, uint32_t family, const Value *const *a, uint32_t n);
+static const Value *kan_closure(Machine *m, ValKind kind, ClosTag tag, uint32_t field, uint32_t argc, const Value *x, const Value *y, const Value *z);
 static const Value *kan_closure4(Machine *m, ValKind kind, ClosTag tag, uint32_t field, uint32_t argc, const Value *x, const Value *y, const Value *z, const Value *w);
 
 /* fold case... x over a domain family: the case of the constructor of X,
@@ -986,7 +993,8 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   acc = cases[x->inst - base];
   for (i = 0; i < ctor->field_count && acc != NULL; i++) {
     field = x->args[fam->param_count + i];
-    acc = apply_value(m, acc, ctor->fields[i].recursive ? fold_family(m, field_sort(&ctor->fields[i], family), cases, ncases, field) : ctor->fields[i].path ? fold_path_field(m, family, cases, ncases, x, i) : field);
+    /* A continuation field k arrives as fun b => fold (k b) (S2 K3). */
+    acc = apply_value(m, acc, ctor->fields[i].recursive ? fold_family(m, field_sort(&ctor->fields[i], family), cases, ncases, field) : ctor->fields[i].path ? fold_path_field(m, family, cases, ncases, x, i) : ctor->fields[i].continuation ? kan_closure(m, VAL_LAM, CLOS_FOLD_CONT, field_sort(&ctor->fields[i], family), 2u, field, stuck_fold(m, family, cases, ncases, x), NULL) : field);
   }
   if (ctor->interval_count == 1u && acc != NULL)
     acc = fold_path(m, family, cases, ncases, x, acc);
@@ -1139,6 +1147,8 @@ static const Value *elim_family(Machine *m, uint32_t family, const Value *const 
     acc = apply_value(m, acc, x->args[p + i]);
     if (f->recursive && acc != NULL)
       acc = apply_value(m, acc, elim_at(m, family, a, n, x->args[p + i]));
+    if (f->continuation && acc != NULL)
+      acc = apply_value(m, acc, kan_closure(m, VAL_LAM, CLOS_FOLD_CONT, family, 2u, x->args[p + i], stuck_elim(m, family, a, n), NULL));
     if (f->path && acc != NULL)
       acc = apply_value(m, acc, kan_closure4(m, VAL_PLAM, CLOS_FOLD_PATH, family, 4u, x->args[p + i], x->args[p + f->ends[0]], x->args[p + f->ends[1]], stuck_elim(m, family, a, n)));
   }
@@ -1263,6 +1273,7 @@ static const Value *reduce_filter(Machine *m, uint32_t inst, const Value *const 
   case CARRIER_LIST:
     return filter_list(m, a);
   case CARRIER_SUM:
+  case CARRIER_CELL:
     break;
   }
   return internal(m, "a filter with no instance");
@@ -1951,6 +1962,12 @@ static const Value *kan_apply(Machine *m, const Value *k, const Value *r) {
     if (a[2]->op == OP_ELIM)
       return elim_at(m, k->field, a[2]->args, a[2]->argc, ctor_at2(m, a[0], a[1], r));
     return fold_family(m, k->field, a[2]->args, a[2]->argc - 2u, ctor_at2(m, a[0], a[1], r));
+  case CLOS_FOLD_CONT:
+    if (a[1]->argc < 2u)
+      return internal(m, "a folded continuation field without its cases");
+    if (a[1]->op == OP_ELIM)
+      return elim_at(m, k->field, a[1]->args, a[1]->argc, apply_value(m, a[0], r));
+    return fold_family(m, k->field, a[1]->args, a[1]->argc - 2u, apply_value(m, a[0], r));
   case CLOS_PATH_SIGMA_COD:
     return closure_apply(m, line_former(m, line_at(m, a[0], r), VAL_SIGMA), sigma_part(m, line_at(m, a[1], r), 0));
   case CLOS_PI_DOM_UP:
@@ -2414,6 +2431,20 @@ static const Value *data_field_type(const Value *ty, const Value *v, uint32_t fi
   return val_is(v, OP_CONS) && val_is(ty, OP_LIST) ? ty : NULL;
 }
 
+/* The type of the argument K of the constructor value V in the uniform
+   family TY (S2 K7), or NULL. A point field gets its type at the
+   parameters of TY and the fields of V. A field type that uses an earlier
+   field needs comp, not hcomp, so it gives NULL (stuck). */
+static const Value *family_field_type(Machine *m, const Value *ty, const Value *v, uint32_t k) {
+  const FamilyInfo *f = &m->families[ty->inst];
+  const CtorInfo *ctor = v->inst < m->ctor_count ? &m->ctors[v->inst] : NULL;
+  uint32_t p = f->param_count;
+  if (ctor == NULL || !val_is(v, OP_CTOR) || ctor->family != ty->inst || f->index_count != 0u || ty->argc != p ||
+      k < p || k - p >= ctor->field_count || ctor->fields[k - p].dependent)
+    return NULL;
+  return field_type_at(m, v->inst, k - p, ty, v->args + p);
+}
+
 /* 1 when the branch B at a fresh i has the head of V: the same literal or
    the same constructor (the K10 head test). */
 static int same_head_at(Machine *m, const Value *b, const Value *v) {
@@ -2427,15 +2458,16 @@ static int same_head_at(Machine *m, const Value *b, const Value *v) {
 
 /* A data type (R4 (a)): each live branch at a fresh i has the head of u0.
    A literal or a nullary constructor gives u0; a constructor with
-   arguments goes into them. A neutral u0, a domain family and a head
-   mismatch are stuck. */
+   arguments goes into them. A neutral u0 and a head mismatch are stuck.
+   A uniform domain family that is not a HIT goes into the point fields of
+   a constructor value, and a parameter keeps its value (S2 K7). */
 static const Value *hcomp_data(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base) {
   const Value **args;
   const Value *field;
   uint32_t k;
   if (hit_type(m, ty))
     return hcomp_formal(m, ty, phi, sys, base);
-  if (val_is(ty, OP_FAMILY) || scrut_of(base) == SCRUT_NEUTRAL ||
+  if (scrut_of(base) == SCRUT_NEUTRAL ||
       (base->kind != VAL_NAT && base->kind != VAL_BIG && base->kind != VAL_OP))
     return hcomp_stuck(m, ty, phi, sys, base);
   for (k = 0; k + 1u < sys->argc; k += 2u)
@@ -2447,12 +2479,16 @@ static const Value *hcomp_data(Machine *m, const Value *ty, const Value *phi, co
   if (args == NULL)
     return oom(m);
   for (k = 0; k < base->argc; k++) {
-    field = data_field_type(ty, base, k);
-    if (field == NULL || field->kind == VAL_UNIV)
-      return hcomp_stuck(m, ty, phi, sys, base);
-    args[k] = hcomp(m, field, phi, sys_map(m, sys, CLOS_SYS_ARG, k, 0, NULL, NULL, NULL), base->args[k]);
-    if (args[k] == NULL)
-      return NULL;
+    if (val_is(ty, OP_FAMILY) && k < m->families[ty->inst].param_count) {
+      args[k] = ty->args[k];
+    } else {
+      field = val_is(ty, OP_FAMILY) ? family_field_type(m, ty, base, k) : data_field_type(ty, base, k);
+      if (field == NULL || field->kind == VAL_UNIV)
+        return hcomp_stuck(m, ty, phi, sys, base);
+      args[k] = hcomp(m, field, phi, sys_map(m, sys, CLOS_SYS_ARG, k, 0, NULL, NULL, NULL), base->args[k]);
+      if (args[k] == NULL)
+        return NULL;
+    }
   }
   return val_op(m, VAL_OP, base->op, base->inst, base->field, args, base->argc);
 }
@@ -3901,6 +3937,16 @@ static int is_typed_value(const Value *v) {
   return v != NULL && v->dom != NULL && ((v->kind == VAL_STUCK && v->op == OP_FIN_CASE) || val_is(v, OP_COUNFOLD));
 }
 
+static int is_cell_pure(const Machine *m, const Value *v) {
+  const CtorInfo *ctor;
+  const FamilyInfo *family;
+  if (!val_is(v, OP_CTOR) || v->inst >= m->ctor_count)
+    return 0;
+  ctor = &m->ctors[v->inst];
+  family = &m->families[ctor->family];
+  return family->cell && v->inst == family->first_ctor + family->ctor_count - 1u && v->argc == family->param_count + 1u;
+}
+
 static void print_typed(Printer *p, const Value *v, const Value *type) {
   char name[32];
   uint32_t suffix = 0;
@@ -3914,7 +3960,12 @@ static void print_typed(Printer *p, const Value *v, const Value *type) {
   put(p, ") => ");
   put(p, name);
   put(p, ") (");
-  print_value(p, v, 0);
+  if (is_cell_pure(p->m, v)) {
+    put(p, "pure ");
+    print_value(p, v->args[v->argc - 1u], 1);
+  } else {
+    print_value(p, v, 0);
+  }
   put(p, "))");
 }
 
@@ -4032,7 +4083,7 @@ static void print_value(Printer *p, const Value *v, int atom) {
     return;
   }
   p->depth++;
-  while (is_chain(v) && !p->full && !val_is(v, OP_COUNFOLD) && !(atom && is_typed_value(v))) {
+  while (is_chain(v) && !p->full && !val_is(v, OP_COUNFOLD) && !is_cell_pure(p->m, v) && !(atom && is_typed_value(v))) {
     uint32_t count = v->argc - 1u;
     if (atom) {
       put(p, "(");
@@ -4065,7 +4116,12 @@ static void print_value(Printer *p, const Value *v, int atom) {
     v = v->args[v->argc - 1u];
     atom = 1;
   }
-  if (atom && is_typed_value(v))
+  if (is_cell_pure(p->m, v)) {
+    const CtorInfo *ctor = &p->m->ctors[v->inst];
+    uint32_t n = p->m->families[ctor->family].param_count;
+    const Value *type = val_op(p->m, VAL_OP, OP_FAMILY, ctor->family, 0, v->args, n);
+    print_typed(p, v, type);
+  } else if (atom && is_typed_value(v))
     print_typed(p, v, v->dom);
   else if (val_is(v, OP_COUNFOLD))
     print_counfold(p, v, atom);

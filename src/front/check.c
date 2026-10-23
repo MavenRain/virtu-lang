@@ -520,11 +520,22 @@ static const Core *finish(Checker *c, const Core *k, const Value *hint, const Va
   return k;
 }
 
-/* 1 when T is Option A, List A or Sum E A. *ELEM is A. */
-static int carrier_of(const Value *t, Carrier *carrier, const Value **elem) {
+/* 1 when T is a cell type C ps V (S2 K4). */
+static int is_cell_type(const Machine *m, const Value *t) {
+  return val_is(t, OP_FAMILY) && m->families[t->inst].cell;
+}
+
+/* 1 when T is Option A, List A, Sum E A or a cell type C ps A (S2 K4).
+   *ELEM is A. */
+static int carrier_of(const Machine *m, const Value *t, Carrier *carrier, const Value **elem) {
   if (val_is(t, OP_OPTION) || val_is(t, OP_LIST)) {
     *carrier = val_is(t, OP_OPTION) ? CARRIER_OPTION : CARRIER_LIST;
     *elem = t->args[0];
+    return 1;
+  }
+  if (is_cell_type(m, t)) {
+    *carrier = CARRIER_CELL;
+    *elem = t->args[t->argc - 1u];
     return 1;
   }
   if (!val_is(t, OP_SUM))
@@ -534,10 +545,24 @@ static int carrier_of(const Value *t, Carrier *carrier, const Value **elem) {
   return 1;
 }
 
-/* SHAPE (Option, List or Sum E) with the element ELEM. */
+/* The cell type SHAPE = C ps V at the variable type ELEM: C ps ELEM. */
+static const Value *cell_at(Checker *c, const Value *shape, const Value *elem) {
+  const Value **args = arena_alloc(c->m->arena, (size_t)shape->argc * sizeof *args);
+  uint32_t i;
+  if (args == NULL)
+    return vnul(FAIL(c, "OOM", "out of memory"));
+  for (i = 0; i + 1u < shape->argc; i++)
+    args[i] = shape->args[i];
+  args[shape->argc - 1u] = elem;
+  return val_op(c->m, VAL_OP, OP_FAMILY, shape->inst, 0, args, shape->argc);
+}
+
+/* SHAPE (Option, List, Sum E or a cell C ps) with the element ELEM. */
 static const Value *carried(Checker *c, const Value *shape, const Value *elem) {
   if (shape == NULL)
     return NULL;
+  if (is_cell_type(c->m, shape))
+    return cell_at(c, shape, elem);
   return val_is(shape, OP_SUM) ? tyop(c, OP_SUM, 2, shape->args[0], elem, NULL) : tyop(c, shape->op, 1, elem, NULL, NULL);
 }
 
@@ -584,7 +609,7 @@ static const Core *carried_arg(Call *k, const Term *arg, const Term *fn, const V
   const Core *x = try_infer(c, arg, type);
   if (x != NULL)
     return x;
-  if (!carrier_of(k->hint, &carrier, &elem))
+  if (!carrier_of(c->m, k->hint, &carrier, &elem))
     return infer(c, arg, type);
   dom = lam_domain(c, fn);
   if (dom == NULL)
@@ -793,12 +818,87 @@ static const Core *rule_option(Call *k) {
   return op3(c, OP_OPTION_ELIM, 0, 3, z, f, o);
 }
 
+/* The cell types S and T are the same cell at the same parameters, with
+   any variable type (S2 K4). */
+static int same_cell(Checker *c, const Value *s, const Value *t) {
+  uint32_t i;
+  if (s->inst != t->inst)
+    return 0;
+  for (i = 0; i + 1u < s->argc; i++)
+    if (!conv_values(c->m, c->level, s->args[i], t->args[i]))
+      return 0;
+  return 1;
+}
+
+/* pure x at the cell type T = C ps V: the pure constructor, which is last
+   (S2 K3), with the parameters quoted at LEVEL. */
+static const Core *cell_pure(Checker *c, const Value *t, uint32_t level, const Core *x) {
+  const FamilyInfo *f = &c->m->families[t->inst];
+  const Core **cores = arena_alloc(c->m->arena, ((size_t)t->argc + 1u) * sizeof *cores);
+  uint32_t i;
+  if (cores == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  for (i = 0; i < t->argc; i++)
+    cores[i] = quote_value(c->m, level, t->args[i]);
+  cores[t->argc] = x;
+  return core_op(c, OP_CTOR, f->first_ctor + f->ctor_count - 1u, 0, cores, t->argc + 1u);
+}
+
+/* The bind case of the 0-cell INST at the cell type RES = C ps W:
+   fun fields => INST ps W fields. A recursive field arrives folded and a
+   continuation field arrives as fun b => fold (k b) (S2 K4). */
+static const Core *cell_rebuild(Checker *c, uint32_t inst, const Value *res) {
+  Machine *m = c->m;
+  const CtorInfo *ctor = &m->ctors[inst];
+  uint32_t n = ctor->field_count;
+  const Core **cores = arena_alloc(m->arena, ((size_t)res->argc + n + 1u) * sizeof *cores);
+  const Core *body;
+  uint32_t i;
+  if (cores == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  for (i = 0; i < res->argc; i++)
+    cores[i] = quote_value(m, c->level + n, res->args[i]);
+  for (i = 0; i < n; i++)
+    cores[res->argc + i] = core_index(c, CORE_VAR, n - 1u - i);
+  body = core_op(c, OP_CTOR, inst, 0, cores, res->argc + n);
+  for (i = n; i > 0u && body != NULL; i--)
+    body = core_bind(c, CORE_LAM, ctor->fields[i - 1u].name, NULL, body);
+  return body;
+}
+
+/* bind and map at the cell type RES = C ps W (S2 K4): fold X with each
+   0-cell rebuilding itself at W and the case PURE at pure, which is last. */
+static const Core *cell_fold(Checker *c, const Value *res, const Core *x, const Core *pure) {
+  Machine *m = c->m;
+  const FamilyInfo *f = &m->families[res->inst];
+  const Core **cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 2u) * sizeof *cores);
+  uint32_t j;
+  if (cores == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  for (j = 0; j + 1u < f->ctor_count; j++)
+    cores[j] = cell_rebuild(c, f->first_ctor + j, res);
+  cores[f->ctor_count - 1u] = pure;
+  cores[f->ctor_count] = quote_value(m, c->level, res);
+  cores[f->ctor_count + 1u] = x;
+  return core_op(c, OP_FOLD_FAMILY, res->inst, 0, cores, f->ctor_count + 2u);
+}
+
+/* The pure case of map g at the cell type RES: fun v => pure (g v). */
+static const Core *map_case(Checker *c, const Value *res, const Core *g) {
+  const Value *gv = here(c, g);
+  const Core *h = gv == NULL ? NULL : quote_value(c->m, c->level + 1u, gv);
+  return core_bind(c, CORE_LAM, "v", NULL, cell_pure(c, res, c->level + 1u, core_app(c, h, core_index(c, CORE_VAR, 0))));
+}
+
 static const Core *rule_pure(Call *k) {
+  Checker *c = k->c;
   Carrier carrier = CARRIER_OPTION;
   const Value *a = NULL;
-  if (!carrier_of(k->hint, &carrier, &a))
+  if (!carrier_of(c->m, k->hint, &carrier, &a))
     return need_type(k, "Option A, List A or Sum E A");
   k->type = k->hint;
+  if (carrier == CARRIER_CELL)
+    return cell_pure(c, k->hint, c->level, check(c, k->args[0], a));
   return op3(k->c, OP_PURE, carrier, 1, check(k->c, k->args[0], a), NULL, NULL);
 }
 
@@ -815,10 +915,12 @@ static const Core *rule_map(Call *k) {
   const Core *f;
   if (x == NULL)
     return NULL;
-  if (!carrier_of(mt, &carrier, &a))
+  if (!carrier_of(c->m, mt, &carrier, &a))
     return not_carrier(k, mt);
-  f = fn_into(c, k->args[0], a, carrier_of(k->hint, &hint_carrier, &hint_elem) ? hint_elem : NULL, &b);
+  f = fn_into(c, k->args[0], a, carrier_of(c->m, k->hint, &hint_carrier, &hint_elem) ? hint_elem : NULL, &b);
   k->type = carried(c, mt, b);
+  if (carrier == CARRIER_CELL)
+    return f == NULL || k->type == NULL ? NULL : cell_fold(c, k->type, x, map_case(c, k->type, f));
   return op3(c, OP_MAP, carrier, 2, f, x, NULL);
 }
 
@@ -835,16 +937,20 @@ static const Core *rule_bind(Call *k) {
   const Core *f;
   if (x == NULL)
     return NULL;
-  if (!carrier_of(mt, &carrier, &a))
+  if (!carrier_of(c->m, mt, &carrier, &a))
     return not_carrier(k, mt);
   f = fn_into(c, k->args[1], a, k->hint, &res);
   if (f == NULL)
     return NULL;
-  if (!carrier_of(res, &result_carrier, &b) || result_carrier != carrier)
+  if (!carrier_of(c->m, res, &result_carrier, &b) || result_carrier != carrier)
     return nul(FAIL(c, "TYPE_MISMATCH", "bind needs a function into the carrier of %s, found one into %s", show(c, mt), show(c, res)));
   if (carrier == CARRIER_SUM && !conv_values(c->m, c->level, res->args[0], mt->args[0]))
     return nul(FAIL(c, "TYPE_MISMATCH", "bind must preserve the Sum error type %s, found %s", show(c, mt->args[0]), show(c, res->args[0])));
+  if (carrier == CARRIER_CELL && !same_cell(c, mt, res))
+    return nul(FAIL(c, "TYPE_MISMATCH", "bind needs a function into the cell %s at a variable type, found one into %s", show(c, mt), show(c, res)));
   k->type = res;
+  if (carrier == CARRIER_CELL)
+    return cell_fold(c, res, x, f);
   return op3(c, OP_BIND, carrier, 2, x, f, NULL);
 }
 
@@ -858,7 +964,7 @@ static const Core *rule_filter(Call *k) {
   const Core *p;
   if (x == NULL)
     return NULL;
-  if (!carrier_of(mt, &carrier, &a) || carrier == CARRIER_SUM)
+  if (!carrier_of(c->m, mt, &carrier, &a) || carrier == CARRIER_SUM || carrier == CARRIER_CELL)
     return nul(FAIL(c, "TYPE_MISMATCH", "filter needs a value of type Option A or List A, found a term of type %s", show(c, mt)));
   p = check(c, k->args[0], val_arrow(c->m, a, bool_type(c)));
   k->type = mt;
@@ -896,7 +1002,7 @@ static uint32_t field_pos(const Checker *c, const CtorInfo *ctor, uint32_t i) {
   uint32_t pos = i;
   uint32_t j;
   for (j = 0; j < i && c->elim_motive != NULL; j++)
-    pos += ctor->fields[j].recursive || ctor->fields[j].path ? 1u : 0u;
+    pos += ctor->fields[j].recursive || ctor->fields[j].continuation || ctor->fields[j].path ? 1u : 0u;
   return pos;
 }
 
@@ -931,6 +1037,13 @@ static const Core *ih_type(Checker *c, const CtorInfo *ctor, const FieldInfo *fi
   uint32_t e0 = c->level + field_pos(c, ctor, field->ends[0]);
   uint32_t e1 = c->level + field_pos(c, ctor, field->ends[1]);
   const Value *line;
+  /* A continuation field k (S2 K3): (b : B) -> P idx (k b). */
+  if (field->continuation) {
+    const Value *b = val_var(m, at + 1u);
+    const Env *under = env_push(m, env, b);
+    const Value *body = under == NULL ? NULL : motive_at(c, c->elim_motive, eval_core(m, under, field->type->b), apply_value(m, x, b));
+    return body == NULL ? NULL : core_bind(c, CORE_PI, "b", quote_value(m, at + 1u, eval_core(m, env, field->type->a)), quote_value(m, at + 2u, body));
+  }
   if (!field->path)
     return quote_value(m, at + 1u, motive_at(c, c->elim_motive, eval_core(m, env, field->type), x));
   line = inner == NULL ? NULL : motive_at(c, c->elim_motive, eval_core(m, inner, field->type->b), path_apply(m, x, r, val_var(m, e0), val_var(m, e1)));
@@ -999,7 +1112,7 @@ static const Core *case_fields(Checker *c, const CtorInfo *ctor, const Env *env,
   for (i = 0; i < n; i++) {
     const FieldInfo *field = &ctor->fields[i];
     uint32_t at = c->level + field_pos(c, ctor, i);
-    int ih = c->elim_motive != NULL && (field->recursive || field->path);
+    int ih = c->elim_motive != NULL && (field->recursive || field->continuation || field->path);
     /* A recursive field at an index over an earlier recursive field (S6)
        arrives folded: the fold is not dependent, so the index goes. An
        elim case (S7 B1) keeps the field. */
@@ -1007,6 +1120,9 @@ static const Core *case_fields(Checker *c, const CtorInfo *ctor, const Env *env,
       return nul(FAIL(c, "HIT_BOUNDARY", "the fold of %s has no case type for the field %s: a field over an earlier recursive field must be Path F x y, with x and y earlier recursive fields", ctor->name, field->name));
     if (c->elim_motive != NULL)
       types[i] = quote_value(m, at, eval_core(m, env, field->type));
+    else if (field->continuation)
+      /* A continuation field arrives folded (S2 K3): B -> RES. */
+      types[i] = core_bind(c, CORE_PI, "b", quote_value(m, at, eval_core(m, env, field->type->a)), quote_value(m, at + 1u, sort_res(c, field->type->b, res)));
     else
       types[i] = field->path ? core_ends(c, CORE_PATHP, "_", NULL, quote_value(m, at + 1u, sort_res(c, field->type->b, res)), quote_value(m, at, val_var(m, c->level + field->ends[0])), quote_value(m, at, val_var(m, c->level + field->ends[1]))) : quote_value(m, at, field->recursive ? sort_res(c, field->type, res) : eval_core(m, env, field->type));
     ihs[i] = ih ? ih_type(c, ctor, field, env, at) : NULL;
@@ -1045,6 +1161,12 @@ static const Value *fold_image(Checker *c, uint32_t fam, const Core *const *core
   /* In an elim case (S7 B1) the IH of the field at L is at L + 1. */
   if (v->kind == VAL_VAR && v->nat >= c->level)
     return c->elim_motive == NULL ? v : val_var(m, v->nat + 1u);
+  /* A continuation field at an argument maps through its folded function
+     or its pointwise induction hypothesis. */
+  if (v->kind == VAL_APP && v->dom != NULL && v->dom->kind == VAL_VAR && v->dom->nat >= c->level) {
+    const Value *fn = fold_image(c, fam, cores, done, v->dom, env, level);
+    return fn == NULL ? NULL : apply_value(m, fn, v->arg);
+  }
   /* p @ r for a path field p (dimension 2, S4 item 15): the folded p has
      the same level, and its ends are earlier recursive fields. In an elim
      case it is the IH path at r. */
@@ -1058,11 +1180,17 @@ static const Value *fold_image(Checker *c, uint32_t fam, const Core *const *core
     const FieldInfo *field = &ci->fields[i];
     const Value *arg = v->args[f->param_count + i];
     /* An elim case takes the field, then its IH (S7 B1). */
-    if (c->elim_motive != NULL && (field->recursive || field->path))
+    if (c->elim_motive != NULL && (field->recursive || field->continuation || field->path))
       acc = apply_value(m, acc, arg);
     if (field->recursive)
       arg = fold_image(c, fam, cores, done, arg, env, level);
-    else if (field->path) {
+    else if (field->continuation) {
+      const Value *b = val_var(m, level);
+      const Env *inner = env_push(m, env, b);
+      const Value *at = inner == NULL ? NULL : apply_value(m, arg, b);
+      const Value *image = at == NULL ? NULL : fold_image(c, fam, cores, done, at, inner, level + 1u);
+      arg = image == NULL ? NULL : val_closure(m, VAL_LAM, "b", NULL, env, quote_value(m, level + 1u, image));
+    } else if (field->path) {
       const Value *r = val_ivar(m, level);
       const Env *inner = env_push(m, env, r);
       const Value *at = inner == NULL ? NULL : path_apply(m, arg, r, v->args[f->param_count + field->ends[0]], v->args[f->param_count + field->ends[1]]);
@@ -3110,6 +3238,10 @@ static int check_field(Checker *c, uint32_t fam, const Field *field, FieldInfo *
   out->recursive = c->self_uses > 0u && !(t->kind == CORE_PATHP && c->field_rec);
   out->dependent = c->field_dep;
   out->over_recursive = c->field_rec;
+  /* A continuation field `B -> F` (S2 K3): one use of the block, the
+     codomain at its own parameters, so B does not use F. */
+  out->continuation = out->recursive && c->self_uses == 1u && t->kind == CORE_PI && own_family(c->m, fam, t->b, earlier + 1u);
+  out->recursive = out->recursive && !out->continuation;
   if (out->recursive && !own_family(c->m, fam, t, earlier))
     return FAIL(c, "DOMAIN_FAMILY", "the recursive field %s must have the type %s at its own parameters", field->name, c->m->families[fam].name);
   return 1;
@@ -3425,6 +3557,7 @@ static int check_header(Checker *c, const Decl *d, uint32_t fam, uint32_t first,
   f->universe = universe;
   f->cofamily = 0;
   f->layer = 0;
+  f->cell = 0;
   for (i = 0; i < d->ctor_count; i++) {
     memset(&m->ctors[m->ctor_count + i], 0, sizeof m->ctors[0]);
     m->ctors[m->ctor_count + i].family = fam;
@@ -3591,11 +3724,139 @@ static int check_def(Checker *c, const Decl *d) {
   return 1;
 }
 
+/* T names X: as a variable or as a binder. A binder named X counts, so a
+   0-cell type cannot hide the carrier (S2 K1). */
+static int term_names(const Term *t, const char *x) {
+  if (t == NULL)
+    return 0;
+  if (t->kind != TERM_NAT && t->name != NULL && strcmp(t->name, x) == 0)
+    return 1;
+  return term_names(t->left, x) || term_names(t->right, x);
+}
+
+static int is_carrier(const Term *t, const char *x) {
+  return t->kind == TERM_VAR && strcmp(t->name, x) == 0;
+}
+
+/* The field type of the 0-cell argument D over the carrier X (S2 K1, K3):
+   D itself when D does not name X, SELF for X, and `B -> SELF` for the
+   continuation `B -> X`. NULL when X is at an other place. */
+static const Term *cell_field_type(Checker *c, const Ctor *op, const Term *d, const char *x, const Term *self) {
+  if (!term_names(d, x))
+    return d;
+  if (is_carrier(d, x))
+    return self;
+  if (d->kind == TERM_PI && !term_names(d->left, x) && is_carrier(d->right, x) && (d->name == NULL || strcmp(d->name, x) != 0))
+    return made_term(c, op, TERM_PI, d->name, d->left, self);
+  return NULL;
+}
+
+/* The fields of the 0-cell OP from its type `A1 -> ... -> An -> X`. A
+   field name is a global owner (rule R4), so an argument with no binder
+   name gets the name OP.K, K its position. */
+static int cell_fields(Checker *c, const Ctor *op, const char *x, const Term *self, Ctor *out) {
+  const Term *t;
+  Field *fields;
+  size_t n = 0;
+  size_t k = 0;
+  for (t = op->result; t->kind == TERM_PI; t = t->right)
+    n++;
+  if (!is_carrier(t, x))
+    return FAIL(c, "CELL_CODOMAIN", "the type of the 0-cell %s must end in the carrier %s", op->name, x);
+  fields = arena_alloc(c->m->arena, (n + 1u) * sizeof *fields);
+  if (fields == NULL)
+    return FAIL(c, "OOM", "out of memory");
+  for (t = op->result; t->kind == TERM_PI; t = t->right, k++) {
+    size_t name_len = strlen(op->name) + 24u;
+    char *name = t->name == NULL ? arena_alloc(c->m->arena, name_len) : NULL;
+    const Term *ft = t->name != NULL && strcmp(t->name, x) == 0 ? NULL : cell_field_type(c, op, t->left, x, self);
+    if (ft == NULL)
+      return c->m->diag->set ? 0 : FAIL(c, "CELL_POSITIVE", "the carrier %s must be a whole argument of the 0-cell %s or the result of a function argument", x, op->name);
+    if (t->name == NULL && name == NULL)
+      return FAIL(c, "OOM", "out of memory");
+    if (name != NULL)
+      snprintf(name, name_len, "%s.%zu", op->name, k + 1u);
+    fields[k].name = name != NULL ? name : t->name;
+    fields[k].type = ft;
+    fields[k].line = t->line;
+    fields[k].col = t->col;
+  }
+  out->name = op->name;
+  out->fields = fields;
+  out->field_count = n;
+  out->result = NULL;
+  out->boundary = NULL;
+  out->line = op->line;
+  out->col = op->col;
+  return 1;
+}
+
+/* A cell (S2 K3): the family NAME PARAMS with a constructor for each
+   0-cell, with the carrier X replaced by the family at its own
+   parameters, and the constructor NAME.pure (v : X) last. A program
+   cannot name NAME.pure; `pure` at a cell type gives it (K4). */
+static int check_cell(Checker *c, const Decl *d) {
+  const Field *carrier = d->param_count > 0u ? &d->params[d->param_count - 1u] : NULL;
+  const char *x = carrier != NULL ? carrier->name : NULL;
+  Decl *e = arena_alloc(c->m->arena, sizeof *e);
+  Ctor *ctors = arena_alloc(c->m->arena, (d->ctor_count + 1u) * sizeof *ctors);
+  Field *pure_field = arena_alloc(c->m->arena, sizeof *pure_field);
+  size_t name_len = strlen(d->name) + sizeof ".pure";
+  char *pure_name = arena_alloc(c->m->arena, name_len);
+  char *v_name = arena_alloc(c->m->arena, name_len);
+  const Term *self;
+  size_t i;
+  size_t j;
+  c->m->def = d->name;
+  if (carrier == NULL || carrier->type->kind != TERM_UNIV || carrier->type->nat != 0u)
+    return FAIL(c, "CELL_CARRIER", "the last parameter of the cell %s must be the carrier, of type Type 0", d->name);
+  if (e == NULL || ctors == NULL || pure_field == NULL || pure_name == NULL || v_name == NULL)
+    return FAIL(c, "OOM", "out of memory");
+  self = made_term(c, &d->ctors[0], TERM_VAR, d->name, NULL, NULL);
+  for (i = 0; self != NULL && i < d->param_count; i++)
+    self = made_term(c, &d->ctors[0], TERM_APP, NULL, self, made_term(c, &d->ctors[0], TERM_VAR, d->params[i].name, NULL, NULL));
+  if (self == NULL || c->m->diag->set)
+    return 0;
+  for (i = 0; i < d->ctor_count; i++) {
+    if (strcmp(d->ctors[i].name, "pure") == 0)
+      return FAIL(c, "CELL_PURE", "pure is the implicit 0-cell of each cell; a 0-cell cannot have the name pure");
+    for (j = 0; j < i; j++)
+      if (strcmp(d->ctors[i].name, d->ctors[j].name) == 0)
+        return FAIL(c, "CELL_DUPLICATE", "%s is already a 0-cell of the cell %s", d->ctors[i].name, d->name);
+    if (!cell_fields(c, &d->ctors[i], x, self, &ctors[i]))
+      return 0;
+  }
+  snprintf(pure_name, name_len, "%s.pure", d->name);
+  snprintf(v_name, name_len, "%s.v", d->name);
+  pure_field->name = v_name;
+  pure_field->type = made_term(c, &d->ctors[0], TERM_VAR, x, NULL, NULL);
+  pure_field->line = carrier->line;
+  pure_field->col = carrier->col;
+  if (pure_field->type == NULL)
+    return 0;
+  ctors[d->ctor_count] = (Ctor){
+    .name = pure_name, .fields = pure_field, .field_count = 1u, .result = NULL, .boundary = NULL,
+    .line = carrier->line, .col = carrier->col,
+  };
+  *e = *d;
+  e->kind = DECL_FAMILY;
+  e->ctors = ctors;
+  e->ctor_count = d->ctor_count + 1u;
+  e->block_count = 1u;
+  {
+    const uint32_t fam = c->m->family_count;
+    if (!check_family(c, e))
+      return 0;
+    c->m->families[fam].cell = 1;
+  }
+  return 1;
+}
+
 static int check_decl(Checker *c, const Decl *d) {
   if (d->kind == DECL_FAMILY && d->origin == ORIGIN_PROGRAM)
-    return FAIL(c, "REFUSE_DATA", "a program cannot declare a family (rule R1); only domain/domain.lang can");
+    return FAIL(c, "REFUSE_DATA", "a program cannot declare a family (rule R1); only domain/domain.lang can, and a program can declare a cell");
   if (d->kind == DECL_COFAMILY && d->origin == ORIGIN_PROGRAM)
-    return FAIL(c, "REFUSE_DATA", "a program cannot declare a cofamily (rule R1); only domain/domain.lang can");
+    return FAIL(c, "REFUSE_DATA", "a program cannot declare a cofamily (rule R1); only domain/domain.lang can, and a program can declare a cell");
   if (d->kind == DECL_AXIOM)
     return FAIL(c, "REFUSE_AXIOM", "an axiom has no proof (rule R2)");
   if (d->is_rec)
@@ -3606,6 +3867,8 @@ static int check_decl(Checker *c, const Decl *d) {
     return 0;
   if (d->kind == DECL_COFAMILY)
     return check_cofamily(c, d);
+  if (d->kind == DECL_CELL)
+    return check_cell(c, d);
   return d->kind == DECL_FAMILY ? check_family(c, d) : check_def(c, d);
 }
 
@@ -3618,7 +3881,8 @@ int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
   m->diag = diag;
   m->fuel = EVAL_FUEL_STEPS;
   for (i = 0; i < decls->count; i++)
-    ctors += decls->items[i].ctor_count;
+    /* A cell also gets its implicit pure constructor (check_cell). */
+    ctors += decls->items[i].ctor_count + (decls->items[i].kind == DECL_CELL ? 1u : 0u);
   m->defs = arena_alloc(arena, (decls->count + 1u) * sizeof *m->defs);
   m->families = arena_alloc(arena, (decls->count + 1u) * sizeof *m->families);
   m->ctors = arena_alloc(arena, (ctors + 1u) * sizeof *m->ctors);

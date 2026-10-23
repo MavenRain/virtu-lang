@@ -110,3 +110,100 @@ Changes from the kickoff list (a read-only survey found them, with a build of ea
 - M7: rule_unfold gives the cofamily form to rule_counfold, which holds the guard.
 - Named killers that do not kill: fin-all-case (M1; its FIN_CASE comes from a PATH_END in one case), hcomp-higher-universe (M2; rule_hcomp gives HCOMP_UNIVERSE), codata-program (M7; a declaration refusal).
 - K9 (a) does not include f10 (path_apply, hcomp_true).
+
+## S2
+
+S2 adds the `cell` declaration to the kernel and a library of cell monads in domain/domain.lang. The kickoff rulings K1 to K12 are all (a) (docs/PLAN.md, USER ruling 2026-10-22). A cell declares its operations over the carrier X. The checker makes a family from a cell, with the implicit `pure` as the last constructor (K3). The rules `pure`, `bind`, `map` and `fold` accept a cell (K4). hcomp at a uniform family is structural (K7).
+
+Ruling Q-S2-s5-1 (a): only FinC has a path to its builtin type (`finPath`, by ua). The library has the maps in the two directions for each cell, and the round trips that pass. The ua paths for OptionC, Either, ListC and NatC are an open point for a later kernel slice. Findings F1 to F3 give the cause.
+
+### Gate
+
+`make -B -j 2 check` exits 0 (~/Documents/virtu-lang-work/s8-gate2.log).
+
+| gate line | S1 | K12 | S2 | added in S2 |
+|---|---|---|---|---|
+| examples | 27 | 32 | 32 | examples/cells.lang, cell-laws.lang, fin-cell.lang, free.lang, state-free.lang |
+| parse refusals | 13 | 14 | 14 | test/parse/cell-no-ops.lang |
+| check refusals | 78 | 86 | 86 | 8 files in test/check (D8) |
+| evals | 99 | about 123 | 128 | 29 rows in test/eval/expect.txt (D5, D10) |
+| build | 27 | 32 | 32 | test/json/cells.json, cell-laws.json, fin-cell.json, free.json, state-free.json |
+| build refusals | 4 | 4 | 5 | test/emit/cell-function.lang (JSON_VALUE, D7) |
+| regressions | 6 | 6 | 6 | none |
+| printer regressions | 2 | 2 | 2 | none |
+| path regressions | 148 | 148 | 158 | 4 cell source round trips and 6 continuation boundary checks |
+
+### Kernel changes
+
+- src/front/lexer.c, lexer.h: the `cell` keyword (TOK_KW_CELL).
+- src/front/parser.c, ast.h: parse_cell and DECL_CELL.
+- src/front/core.h: CARRIER_CELL, CLOS_FOLD_CONT, the `continuation` flag of a field and the `cell` flag of a family.
+- src/front/check.c: check_decl admits a program cell (K2). check_cell makes the family, with `pure` last (K3). cell_fields, cell_field_type and is_carrier check the operations. The checker gives `pure`, `bind` and `map` at a cell (K4). check_field, own_family, ih_type and case_fields accept a continuation field.
+- src/front/eval.c: fold_family and elim_family accept a continuation field. hcomp_data does not make hcomp at a family stuck (K7).
+- Staged review: fold_image maps continuation fields and their pointwise induction hypotheses in HIT boundaries. The value printer emits cell pure values using `pure` under a typed identity, retaining the cell type in inference contexts.
+- domain/domain.lang: the library section (K5, K6): the cells Either (throw), Free (op), OptionC (noneC), ListC (consC), NatC (succC) and FinC (pickC); the maps toOption, ofOption, toSum, ofSum, toList, ofList, cellToNat, cellOfNat, toFin, ofFin; the round trips retOption, retSum, finSec, finRet; finPath.
+
+### Added tests (K10)
+
+- examples: cells.lang, cell-laws.lang, fin-cell.lang, free.lang, state-free.lang.
+- test/check: cell-codomain.lang (CELL_CODOMAIN), cell-positive.lang (CELL_POSITIVE), cell-carrier.lang (CELL_CARRIER), cell-pure.lang (CELL_PURE), cell-duplicate.lang (CELL_DUPLICATE), cell-fold-missing.lang (TYPE_MISMATCH), cell-bind-mismatch.lang (TYPE_MISMATCH), family-and-program.lang (REFUSE_DATA).
+- test/parse/cell-no-ops.lang (PARSE_EXPECT).
+- test/emit/cell-function.lang (JSON_VALUE).
+- test/json: 5 goldens. Each golden was read by hand.
+- test/eval/expect.txt: 29 rows.
+- test/path-regressions.c: 4 cell source round trips and 6 HIT continuation boundary checks, including refusal of unequal boundary ends.
+
+### Deviations
+
+- D1, a kernel bug, fixed. check_program gave m->ctors the size of the parsed ctor_count of each declaration. But check_cell adds the implicit `pure` constructor. The 6 domain cells wrote past the array into the next arena values. The domain def Bool became "a term of type " (empty), and entries, formers, inventory and monad gave TYPE_MISMATCH. The fix at src/front/check.c:3873 adds 1 for each DECL_CELL. The program probes did not show the bug (1 to 5 program cells).
+- D2: `toNat` is a def in examples/dec.lang. Thus the NatC maps are cellToNat and cellOfNat.
+- D3: examples/cell-laws.lang uses unitC helpers (`unitOption V a` is `pure a`) in the left unit law, because `bind` needs the type of its first argument. The form `bind (pure a) f` was not tried.
+- D4, print forms: the staged review fixed the non-source form `OptionC.pure Nat 3`. Pure values now print as `pure 3` under a typed identity for their cell type. `throw Bool Nat true` prints as `throw (Fin 2) Nat 1`, because Bool unfolds. In the JSON types, Bool prints as `Fin 2`.
+- D5: evals 127 at the end of chunk B (99 + 28), against about 123 in K12.
+- D6: `langc build` refused free.lang and state-free.lang with JSON_VALUE (a function in the instance). A Pi-type def has no JSON form, so test/json/cell-laws.json has no instance.
+- D7, the D6 fix: in free.lang and state-free.lang each Free or State value is a function of a seed (`tree d`, `grown d`, `tripled d`, `shaped w`, `prog d`, `after d`). The folds take the seed 1 (shapeOf: the shape 3). The 9 eval values did not change. free.json has total, totalMap, leaves and shapeOf. state-free.json has pairAt4. test/emit/cell-function.lang (a top-level Free value) gives JSON_VALUE. Thus build refusals is 5, not 4 (K12).
+- D8: the refusal codes come from real runs. cell-fold-missing gives TYPE_MISMATCH, and its message names "Nat, List A or a domain family", not a cell (a finding). cell-bind-mismatch gives TYPE_MISMATCH, because bind needs a function into the cell `OptionC Nat`. family-and-program gives REFUSE_DATA at Ping, the first family. cell-no-ops gives PARSE_EXPECT.
+- D9: the counts agree with K12, except evals (D5, D10) and build refusals (D7).
+- D10: the mutant runner is outside the repo. It restores each file from a copy, not from the index, because the S2 changes were not in the index. A builder subagent for the mutant loop stopped at its first step on an API classifier, with no file change. The loop ran by hand. N10 was first killed only by test/json/monad.json, because cells ce uses the cell Either map (check.c cell_fold) and not the builtin Sum map. S2 build session 8 added `def sumMap` (map at the builtin Sum) to examples/cells.lang and the eval row `cells sumMap => inr 5` (evals 128). The N10 rerun fails that row.
+- K6 gives the FinC operation the name `pick`. `pick` is a def in examples/entries.lang, so the operation is `pickC` (F5).
+
+### Findings
+
+- `NAME.pure` does not lex (LEX_CHAR 0x2e). Only the `pure` rule gives a pure value; the printer uses that rule under a typed identity.
+- Library binder names clash across cells: `REFUSE_NAME: a: a is a domain field (rule R4)`.
+- Staged review fixed fold_image (the boundary images of a HIT): a continuation is mapped pointwise, and an elim case receives the raw continuation followed by its induction hypothesis. Valid folds previously gave PATH_END, and valid elims could give INTERNAL.
+- src/json.c tests only `recursive`. A value with a function field has no JSON form (D6).
+- CARRIER_CELL is in the enum, but no core holds it. check.c gives `pure`, `bind` and `map` at check time (OP_CTOR of the last constructor; OP_FOLD_FAMILY with cell_rebuild cases and the pure case), because reduce_bind cannot rebuild a cell value. The meaning of K4 holds.
+- The removal of the hcomp_data guard alone did not give the K7 structural hcomp. family_field_type adds it, for a uniform family only. A dependent field and an indexed family stay stuck.
+- A bind at a neutral x stays a fold.
+- F1: `option`, `either` and the Nat and List `fold` are non-dependent ("needs a function with a non-dependent result type"). `elim` takes only a domain family. Thus the builtin-side homotopy of isoToEquiv for Option, Sum, List and Nat has no proof. `sec : Path (Option V) (toOpt V (ofOpt V o)) o := refl` gives PATH_END.
+- F2: Unit has no eta rule. `unitEta : (u : Unit) -> Path Unit u unit := refl` gives PATH_END. Thus the cell-side round trip of `ListC A Unit` and `NatC Unit` fails at the pure case.
+- F3: the builtin Nat fold at `succ x` with a neutral x stays stuck. The Nat fold reduces only at a literal.
+- F4, pass: the cell-side round trips of OptionC and Either by elim (retOption, retSum); Free with the dependent field `(opShape : A) -> (B opShape -> X) -> X` (`op` takes A, B, X, the shape and the continuation: 5 arguments); `FinC k Empty = Fin k`.
+- F5, names: `pick` is a def in examples/entries.lang, so the FinC operation is `pickC`. The other operation names have no clash: `noneC`, `throw`, `consC`, `succC`, `op` with the field `opShape`. `get` and `put` are only in examples/state-free.lang.
+- F6: the builtin fold takes the step first, then the base. A cell fold takes the operation cases, then the pure case.
+
+### Mutants (K11)
+
+The runner ~/Documents/virtu-lang-work/s7-probe/mutants/run.zsh (outside the repo) applies each mutant and runs `make -B -j 2 check`. Then it restores the file from a copy, compares the file with the copy and runs the gate again. The N10 rerun is ~/Documents/virtu-lang-work/s8-probe/n10.zsh. Each restore is equal to the copy, and each restore gate exits 0. Lines are V lines. Result: 10 of 10 KILLED.
+
+| id | site | mutation | killer | result |
+|---|---|---|---|---|
+| N1 | src/front/check.c:3859 check_decl | a program cell gives REFUSE_DATA | examples/state-free.lang, the 5 CELL_* check refusals, 4 state-free eval rows | KILLED |
+| N2 (M1) | src/front/check.c:3844 check_decl | skip the program family refusal (`&& 0`) | data.lang, family-and-program.lang (REFUSE_DATA) | KILLED |
+| N3 | src/front/check.c:844 cell_pure | `pure` is the first constructor, not the last | 290 rows: INTERNAL wrong number of arguments at the domain def retOption | KILLED |
+| N4 | src/front/check.c:953 rule_bind | the pure case of bind is the identity | eval cells cbo1, cbl; free total, leaves; state-free afterState, afterResult; cell-laws leftOption (PATH_END); 3 goldens | KILLED |
+| N5 | src/front/eval.c:997 fold_family | give the raw continuation, not the fold of it | cell-laws rightFree (PATH_END); eval free total, totalMap, leaves; 5 state-free rows | KILLED |
+| N6 | src/front/check.c:1041 ih_type | the induction type of a continuation field is the field type | cell-laws rightFree (TYPE_MISMATCH), cell-laws.json | KILLED |
+| N7 | src/front/check.c:3733 cell_field_type | a Pi field with a codomain that is not X is a plain field | test/check/cell-positive.lang | KILLED |
+| N8 | src/front/check.c:3752 cell_fields | skip the carrier test (`0 &&`) | test/check/cell-codomain.lang | KILLED |
+| N9 | src/front/eval.c:2470 hcomp_data | put the family guard back in the stuck test | examples/fin-cell.lang (PATH_END), 4 fin-cell eval rows, fin-cell.json | KILLED |
+| N10 (M3) | src/front/eval.c:809 the Sum map (CARRIER_SUM) | map at `inl`, not at `inr` | eval `cells sumMap => inr 5`, cells.json, monad.json | KILLED |
+
+Named killers that do not kill:
+
+- N1: examples/cells.lang uses only domain cells.
+- N3: an INTERNAL arity error at the domain def retOption stops the gate before the cells values cbo1, cbl and cn.
+- N4: cells cbe does not kill, because `be` is a throw and the pure case does not run.
+- N6: free leaves does not kill.
+- N10: cells ce does not kill (D10).

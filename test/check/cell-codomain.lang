@@ -1,0 +1,2 @@
+-- The type of a 0-cell must end in the carrier X (S2 K1).
+cell Halt (X : Type 0) := halt : Nat

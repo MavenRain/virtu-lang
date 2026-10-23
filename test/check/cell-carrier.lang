@@ -1,0 +1,2 @@
+-- The last parameter of a cell must be the carrier, of type Type 0 (S2 K1).
+cell Big (X : Type 1) := big : X

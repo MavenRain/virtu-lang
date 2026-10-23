@@ -1,0 +1,3 @@
+-- A program cannot declare a mutual family block (rule R1, S2 K2).
+family Ping := ping (pingNext : Pong) | pingStop
+and Pong := pong (pongNext : Ping) | pongStop

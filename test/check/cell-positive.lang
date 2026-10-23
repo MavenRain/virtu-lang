@@ -1,0 +1,2 @@
+-- The carrier X cannot be in the domain of an argument function (S2 K1).
+cell Loop (X : Type 0) := loop : (X -> Nat) -> X

@@ -83,7 +83,10 @@ typedef enum {
 typedef enum {
   CARRIER_OPTION,
   CARRIER_LIST,
-  CARRIER_SUM
+  CARRIER_SUM,
+  /* A cell type (S2 K4). check.c gives pure, map and bind at a cell as a
+     constructor and a fold, so no core holds it. */
+  CARRIER_CELL
 } Carrier;
 
 typedef enum {
@@ -195,6 +198,8 @@ typedef enum {
   /* S4 item 14. */
   CLOS_FOLD_PATH,      /* PLAM: k |-> fold (p @ k) with the cases and RES of F; args: p, a, b (the ends of p), F (a stuck fold); field: the family */
   CLOS_FOLD_FACE,      /* PLAM: k |-> fold (X at the first interval E, the second k) with the cases and RES of F; args: X, E, F (a stuck fold); field: the family */
+  /* S2 K3. */
+  CLOS_FOLD_CONT,      /* LAM: b |-> fold (k b) with the cases and RES of F, or elim (k b); args: k, F (a stuck fold or a stuck elim); field: the family */
   /* S6b item 6. */
   CLOS_PATH_SIGMA_COD, /* PLAM: i |-> B(i) (witness (p @ i)); args: L, p */
   CLOS_PI_DOM_UP,      /* PLAM: j |-> the domain of L(r /\ j); args: L, r */
@@ -248,6 +253,10 @@ typedef struct {
      `Path RES x' y'`. */
   int path;
   uint32_t ends[2];
+  /* A continuation field `B -> F` (S2 K3): F the family at its own
+     parameters, B a type that does not use F. It is not a recursive
+     field. The fold gives it the type `B -> RES`. */
+  int continuation;
 } FieldInfo;
 
 typedef struct {
@@ -288,6 +297,9 @@ typedef struct {
      LAYER at its last parameter. It has no constructors. 0 for a family. */
   int cofamily;
   uint32_t layer;
+  /* A cell (S2 K3): the family that a `cell` declaration makes. 0 for a
+     family. */
+  int cell;
 } FamilyInfo;
 
 typedef struct {

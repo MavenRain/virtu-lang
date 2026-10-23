@@ -1,0 +1,1 @@
+def tree : Free Nat (fun (a : Nat) => Nat) Nat := op Nat (fun (a : Nat) => Nat) Nat 1 (fun (n : Nat) => pure n)

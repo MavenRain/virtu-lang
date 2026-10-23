@@ -1,0 +1,2 @@
+-- pure is the implicit 0-cell of each cell (S2 K1).
+cell Twin (X : Type 0) := pure : X

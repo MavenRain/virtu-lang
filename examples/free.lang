@@ -1,0 +1,14 @@
+-- An infinitary 0-cell (S2, K10). Free has a constant arity family here:
+-- each op node has one child for each Nat. A fold reads the children k 0
+-- and k 2 (total) or k 0 and k 1 (leaves, a leaf count of that sample).
+-- Each Free value is a function of a seed: a top-level Free value holds a
+-- function, which has no JSON form (test/emit/cell-function.lang).
+def tree : (d : Nat) -> Free Nat (fun (a : Nat) => Nat) Nat := fun (d : Nat) => op Nat (fun (a : Nat) => Nat) Nat d (fun (n : Nat) => pure n)
+def grown : (d : Nat) -> Free Nat (fun (a : Nat) => Nat) Nat := fun (d : Nat) => bind (tree d) (fun (n : Nat) => op Nat (fun (a : Nat) => Nat) Nat 10 (fun (m : Nat) => pure (natAdd n m)))
+def tripled : (d : Nat) -> Free Nat (fun (a : Nat) => Nat) Nat := fun (d : Nat) => map (fun (n : Nat) => natMul n 3) (tree d)
+def total : Nat := fold (fun (s : Nat) (k : Nat -> Nat) => natAdd s (natAdd (k 0) (k 2))) (fun (v : Nat) => v) (grown 1)
+def totalMap : Nat := fold (fun (s : Nat) (k : Nat -> Nat) => natAdd s (natAdd (k 0) (k 2))) (fun (v : Nat) => v) (tripled 1)
+def leaves : Nat := fold (fun (s : Nat) (k : Nat -> Nat) => natAdd (k 0) (k 1)) (fun (v : Nat) => 1) (grown 1)
+-- A dependent arity family: the node at shape n has one child for each Fin n.
+def shaped : (w : Nat) -> Free Nat (fun (n : Nat) => Fin n) Nat := fun (w : Nat) => op Nat (fun (n : Nat) => Fin n) Nat w (fun (r : Fin w) => pure (finVal w r))
+def shapeOf : Nat := fold (fun (s : Nat) (k : Fin s -> Nat) => s) (fun (v : Nat) => v) (shaped 3)

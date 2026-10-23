@@ -1,0 +1,1 @@
+{"virtu-lang":1,"instances":[{"name":"toCode","type":"Fin 3","value":1},{"name":"toCell","type":"FinC 3 Empty","value":{"tag":"pickC","pickC.1":2}},{"name":"fwd","type":"PathP (fun _ => Fin 3) 1 1","value":{"refl":1}},{"name":"bwd","type":"PathP (fun _ => FinC 3 Empty) (pickC 3 Empty 2) (pickC 3 Empty 2)","value":{"refl":{"tag":"pickC","pickC.1":2}}}]}

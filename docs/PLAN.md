@@ -96,6 +96,44 @@ all (a). The kernel donor is agent-lang 06854bf. These are now rulings:
   are accepted. All three claims are confirmed. The `State S X` row now
   has the hypothesis "for sets `S` and `X`".
 
+### USER ruling (S2 kickoff)
+
+On 2026-10-22 the USER said: "Take all recommendations for K1-K12." Thus
+the S2 kickoff proposals K1 to K12 are all (a). These are now rulings:
+
+- K1 the 0-cell syntax is `cell NAME PARAMS (X : Type 0) := op : TYPE |
+  ...`. The last parameter is the carrier. Each op type is a Pi over
+  parameters that do not name X, then the arguments `X` or `B -> X`, then
+  the result `X`. `NAME PARAMS V` is the free algebra on V. `pure` is
+  implicit.
+- K2 a program can declare a cell. A program `family` or `cofamily` keeps
+  REFUSE_DATA (O8), and the message names `cell`.
+- K3 a cell becomes a family with an is_cell flag. It has one constructor
+  for each 0-cell and `pure (v : V)` last. A constructor can have a
+  continuation field `B -> T`. Its induction result has the type `B -> Y`.
+- K4 the Carrier enum gets a cell carrier that holds the family. `pure` is
+  the pure constructor, `bind` is the fold with the pure case `f`, and
+  `map f = bind (pure . f)`. `filter` stays on Option and List.
+- K5 a new section of domain/domain.lang declares `Either`, `Free`,
+  `OptionC`, `ListC`, `NatC` and `FinC`. The builtins keep their names.
+  The library gives a path from each cell to its builtin by `ua` and
+  `isoToEquiv`.
+- K6 `cell FinC (k : Nat) (X : Type 0) := pick : Fin k -> X`. Thus
+  `FinC k Empty = Fin k` for each k. Enumerations at a literal k are S5
+  cells.
+- K7 hcomp_data loses the guard that makes hcomp at a family stuck. A HIT
+  still goes to hcomp_formal.
+- K8 examples/cell-laws.lang gives the monad laws of each library cell as
+  paths: left unit by `refl`, right unit and associativity by `elim`.
+- K9 the 27 `Virt` operations are in S5. S2 gives only the cell form and
+  the library.
+- K10 S2 adds 5 examples (cells, free, state-free, cell-laws, fin-cell), 8
+  check refusal files and 1 parse refusal file. No new host harness.
+- K11 S2 has 10 mutants, N1 to N10.
+- K12 the predicted S2 gate is: examples 32, parse 14, check 86, evals
+  about 123, json 32 builds, build refusals 4, regressions 6, printer 2,
+  path regressions 148.
+
 ## 2. The type constructors
 
 ### 2.1 The ambient category

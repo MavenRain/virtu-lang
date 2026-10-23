@@ -29,6 +29,7 @@ static const struct {
   {"and", TOK_KW_AND},
   {"elim", TOK_KW_ELIM},
   {"cofamily", TOK_KW_COFAMILY},
+  {"cell", TOK_KW_CELL},
 };
 
 const char *tok_kind_name(TokKind kind) {
@@ -61,6 +62,7 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_KW_AND: return "'and'";
     case TOK_KW_ELIM: return "'elim'";
     case TOK_KW_COFAMILY: return "'cofamily'";
+    case TOK_KW_CELL: return "'cell'";
   }
   return "a token";
 }

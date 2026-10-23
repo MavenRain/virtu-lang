@@ -1,0 +1,2 @@
+-- A cell needs at least one 0-cell after :=.
+cell Void (X : Type 0) :=

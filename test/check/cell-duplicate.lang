@@ -1,0 +1,2 @@
+-- Two 0-cells of a cell cannot have the same name (S2 K1).
+cell Echo (X : Type 0) := ring : X | ring : X

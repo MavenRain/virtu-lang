@@ -1,0 +1,3 @@
+-- A fold over OptionC needs a case for noneC and a case for pure (S2 K3).
+def po : OptionC Nat := pure 3
+def count : Nat := fold (fun (v : Nat) => v) po

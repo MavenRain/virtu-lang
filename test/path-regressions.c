@@ -496,7 +496,34 @@ int main(void) {
     "  | sq2Square (sq2From : Sq2 A) (sq2To : Sq2 A) (sq2Left : Path (Sq2 A) sq2From sq2To) (sq2Right : Path (Sq2 A) sq2From sq2To) (i : I) (j : I)\n"
     "    [ ~i -> sq2Left @ j, i -> sq2Right @ j, ~j -> sq2From ]\n",
     "def u : Nat := 0\n", "SYSTEM_COVER");
-  /* Boundary images must fold path fields just as evaluation does. */
+  /* Generated cell constructors must print as ordinary source syntax. */
+  failed += !roundtrip("cell pure round-trips",
+    "def original : OptionC Nat := pure 3\n");
+  failed += !roundtrip("polymorphic cell pure round-trips",
+    "def original : (V : Type 0) -> V -> Either Nat V := fun (V : Type 0) (v : V) => pure v\n");
+  failed += !roundtrip("nested cell pure round-trips",
+    "def original : ListC Nat (OptionC Nat) := consC Nat (OptionC Nat) 2 (pure (pure 3))\n");
+  failed += !roundtrip("neutral cell bind round-trips",
+    "def original : OptionC Nat -> OptionC Nat := fun (o : OptionC Nat) => bind o (fun (n : Nat) => pure (succ n))\n");
+  /* Boundary images must map continuation and path fields as evaluation does. */
+  failed += !domain_roundtrip("fold boundary maps a point constructor continuation",
+    "family HC := hcLeaf | hcNode (hcK : Nat -> HC) | hcLoop (i : I) [ ~i -> hcNode (fun (n : Nat) => hcLeaf), i -> hcLeaf ]\n",
+    "def original : Path Nat 0 0 := fun (i : I) => fold 0 (fun (k : Nat -> Nat) => k 0) refl (hcLoop i)\n");
+  failed += !domain_roundtrip("elim boundary supplies a point constructor continuation IH",
+    "family HC := hcLeaf | hcNode (hcK : Nat -> HC) | hcLoop (i : I) [ ~i -> hcNode (fun (n : Nat) => hcLeaf), i -> hcLeaf ]\n",
+    "def original : Path Nat 0 0 := fun (i : I) => elim (fun (x : HC) => Nat) 0 (fun (k : Nat -> HC) (h : Nat -> Nat) => h 0) refl (hcLoop i)\n");
+  failed += !domain_roundtrip("fold boundary maps an applied continuation field",
+    "family HC := hcLeaf | hcNode (hcK : Nat -> HC) | hcLoop (hcArg : Nat -> HC) (i : I) [ ~i -> hcNode hcArg, i -> hcNode hcArg ]\n",
+    "def original : HC -> Nat := fun (x : HC) => fold 0 (fun (k : Nat -> Nat) => k 0) (fun (k : Nat -> Nat) => refl) x\n");
+  failed += !domain_roundtrip("elim boundary maps an applied continuation field to its IH",
+    "family HC := hcLeaf | hcNode (hcK : Nat -> HC) | hcLoop (hcArg : Nat -> HC) (i : I) [ ~i -> hcNode hcArg, i -> hcNode hcArg ]\n",
+    "def original : HC -> Nat := fun (x : HC) => elim (fun (y : HC) => Nat) 0 (fun (k : Nat -> HC) (h : Nat -> Nat) => h 0) (fun (k : Nat -> HC) (h : Nat -> Nat) => refl) x\n");
+  failed += !domain_refuses("fold continuation boundary still checks unequal ends",
+    "family HC := hcLeaf | hcNode (hcK : Nat -> HC) | hcLoop (i : I) [ ~i -> hcNode (fun (n : Nat) => hcLeaf), i -> hcLeaf ]\n",
+    "def original : Nat := fold 0 (fun (k : Nat -> Nat) => 1) refl hcLeaf\n", "PATH_END");
+  failed += !domain_refuses("elim continuation boundary still checks unequal ends",
+    "family HC := hcLeaf | hcNode (hcK : Nat -> HC) | hcLoop (i : I) [ ~i -> hcNode (fun (n : Nat) => hcLeaf), i -> hcLeaf ]\n",
+    "def original : Nat := elim (fun (x : HC) => Nat) 0 (fun (k : Nat -> HC) (h : Nat -> Nat) => 1) refl hcLeaf\n", "PATH_END");
   failed += !domain_roundtrip("fold boundary maps a point constructor path field",
     "family HH := hhBase | hhNode (hhX : HH) (hhY : HH) (hhP : Path HH hhX hhY) | hhLoop (i : I) [ ~i -> hhNode hhBase hhBase refl, i -> hhNode hhBase hhBase refl ]\n",
     "def original : Path (Fin 2) 0 0 := fun (t : I) => fold 0 (fun (x : Fin 2) (y : Fin 2) (p : Path (Fin 2) x y) => p @ t) refl (hhLoop t)\n");

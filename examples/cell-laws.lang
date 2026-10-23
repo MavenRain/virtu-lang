@@ -1,0 +1,46 @@
+-- The monad laws of the library cells as paths (S2, K8). Left unit is refl.
+-- Right unit and associativity are by elim: cong at each 0-cell, and funExt
+-- at the continuation field of Free. unitC is pure at the cell C, because
+-- bind needs the type of its first argument.
+def unitOption : (V : Type 0) -> V -> OptionC V := fun (V : Type 0) (v : V) => pure v
+def leftOption : (V : Type 0) -> (W : Type 0) -> (a : V) -> (f : V -> OptionC W) -> Path (OptionC W) (bind (unitOption V a) f) (f a) :=
+  fun (V : Type 0) (W : Type 0) (a : V) (f : V -> OptionC W) => refl
+def rightOption : (V : Type 0) -> (m : OptionC V) -> Path (OptionC V) (bind m (fun (v : V) => pure v)) m :=
+  fun (V : Type 0) (m : OptionC V) => elim (fun (d : OptionC V) => Path (OptionC V) (bind d (fun (v : V) => pure v)) d) refl (fun (v : V) => refl) m
+def assocOption : (U : Type 0) -> (V : Type 0) -> (W : Type 0) -> (f : U -> OptionC V) -> (g : V -> OptionC W) -> (m : OptionC U) -> Path (OptionC W) (bind (bind m f) g) (bind m (fun (u : U) => bind (f u) g)) :=
+  fun (U : Type 0) (V : Type 0) (W : Type 0) (f : U -> OptionC V) (g : V -> OptionC W) (m : OptionC U) => elim (fun (d : OptionC U) => Path (OptionC W) (bind (bind d f) g) (bind d (fun (u : U) => bind (f u) g))) refl (fun (u : U) => refl) m
+def unitEither : (E : Type 0) -> (V : Type 0) -> V -> Either E V := fun (E : Type 0) (V : Type 0) (v : V) => pure v
+def leftEither : (E : Type 0) -> (V : Type 0) -> (W : Type 0) -> (a : V) -> (f : V -> Either E W) -> Path (Either E W) (bind (unitEither E V a) f) (f a) :=
+  fun (E : Type 0) (V : Type 0) (W : Type 0) (a : V) (f : V -> Either E W) => refl
+def rightEither : (E : Type 0) -> (V : Type 0) -> (m : Either E V) -> Path (Either E V) (bind m (fun (v : V) => pure v)) m :=
+  fun (E : Type 0) (V : Type 0) (m : Either E V) => elim (fun (d : Either E V) => Path (Either E V) (bind d (fun (v : V) => pure v)) d) (fun (e : E) => refl) (fun (v : V) => refl) m
+def assocEither : (E : Type 0) -> (U : Type 0) -> (V : Type 0) -> (W : Type 0) -> (f : U -> Either E V) -> (g : V -> Either E W) -> (m : Either E U) -> Path (Either E W) (bind (bind m f) g) (bind m (fun (u : U) => bind (f u) g)) :=
+  fun (E : Type 0) (U : Type 0) (V : Type 0) (W : Type 0) (f : U -> Either E V) (g : V -> Either E W) (m : Either E U) => elim (fun (d : Either E U) => Path (Either E W) (bind (bind d f) g) (bind d (fun (u : U) => bind (f u) g))) (fun (e : E) => refl) (fun (u : U) => refl) m
+def unitList : (A : Type 0) -> (V : Type 0) -> V -> ListC A V := fun (A : Type 0) (V : Type 0) (v : V) => pure v
+def leftList : (A : Type 0) -> (V : Type 0) -> (W : Type 0) -> (a : V) -> (f : V -> ListC A W) -> Path (ListC A W) (bind (unitList A V a) f) (f a) :=
+  fun (A : Type 0) (V : Type 0) (W : Type 0) (a : V) (f : V -> ListC A W) => refl
+def rightList : (A : Type 0) -> (V : Type 0) -> (m : ListC A V) -> Path (ListC A V) (bind m (fun (v : V) => pure v)) m :=
+  fun (A : Type 0) (V : Type 0) (m : ListC A V) => elim (fun (d : ListC A V) => Path (ListC A V) (bind d (fun (v : V) => pure v)) d) (fun (a : A) (r : ListC A V) (h : Path (ListC A V) (bind r (fun (v : V) => pure v)) r) => fun (i : I) => consC A V a (h @ i)) (fun (v : V) => refl) m
+def assocList : (A : Type 0) -> (U : Type 0) -> (V : Type 0) -> (W : Type 0) -> (f : U -> ListC A V) -> (g : V -> ListC A W) -> (m : ListC A U) -> Path (ListC A W) (bind (bind m f) g) (bind m (fun (u : U) => bind (f u) g)) :=
+  fun (A : Type 0) (U : Type 0) (V : Type 0) (W : Type 0) (f : U -> ListC A V) (g : V -> ListC A W) (m : ListC A U) => elim (fun (d : ListC A U) => Path (ListC A W) (bind (bind d f) g) (bind d (fun (u : U) => bind (f u) g))) (fun (a : A) (r : ListC A U) (h : Path (ListC A W) (bind (bind r f) g) (bind r (fun (u : U) => bind (f u) g))) => fun (i : I) => consC A W a (h @ i)) (fun (u : U) => refl) m
+def unitNat : (V : Type 0) -> V -> NatC V := fun (V : Type 0) (v : V) => pure v
+def leftNat : (V : Type 0) -> (W : Type 0) -> (a : V) -> (f : V -> NatC W) -> Path (NatC W) (bind (unitNat V a) f) (f a) :=
+  fun (V : Type 0) (W : Type 0) (a : V) (f : V -> NatC W) => refl
+def rightNat : (V : Type 0) -> (m : NatC V) -> Path (NatC V) (bind m (fun (v : V) => pure v)) m :=
+  fun (V : Type 0) (m : NatC V) => elim (fun (d : NatC V) => Path (NatC V) (bind d (fun (v : V) => pure v)) d) (fun (r : NatC V) (h : Path (NatC V) (bind r (fun (v : V) => pure v)) r) => fun (i : I) => succC V (h @ i)) (fun (v : V) => refl) m
+def assocNat : (U : Type 0) -> (V : Type 0) -> (W : Type 0) -> (f : U -> NatC V) -> (g : V -> NatC W) -> (m : NatC U) -> Path (NatC W) (bind (bind m f) g) (bind m (fun (u : U) => bind (f u) g)) :=
+  fun (U : Type 0) (V : Type 0) (W : Type 0) (f : U -> NatC V) (g : V -> NatC W) (m : NatC U) => elim (fun (d : NatC U) => Path (NatC W) (bind (bind d f) g) (bind d (fun (u : U) => bind (f u) g))) (fun (r : NatC U) (h : Path (NatC W) (bind (bind r f) g) (bind r (fun (u : U) => bind (f u) g))) => fun (i : I) => succC W (h @ i)) (fun (u : U) => refl) m
+def unitFin : (k : Nat) -> (V : Type 0) -> V -> FinC k V := fun (k : Nat) (V : Type 0) (v : V) => pure v
+def leftFin : (k : Nat) -> (V : Type 0) -> (W : Type 0) -> (a : V) -> (f : V -> FinC k W) -> Path (FinC k W) (bind (unitFin k V a) f) (f a) :=
+  fun (k : Nat) (V : Type 0) (W : Type 0) (a : V) (f : V -> FinC k W) => refl
+def rightFin : (k : Nat) -> (V : Type 0) -> (m : FinC k V) -> Path (FinC k V) (bind m (fun (v : V) => pure v)) m :=
+  fun (k : Nat) (V : Type 0) (m : FinC k V) => elim (fun (d : FinC k V) => Path (FinC k V) (bind d (fun (v : V) => pure v)) d) (fun (r : Fin k) => refl) (fun (v : V) => refl) m
+def assocFin : (k : Nat) -> (U : Type 0) -> (V : Type 0) -> (W : Type 0) -> (f : U -> FinC k V) -> (g : V -> FinC k W) -> (m : FinC k U) -> Path (FinC k W) (bind (bind m f) g) (bind m (fun (u : U) => bind (f u) g)) :=
+  fun (k : Nat) (U : Type 0) (V : Type 0) (W : Type 0) (f : U -> FinC k V) (g : V -> FinC k W) (m : FinC k U) => elim (fun (d : FinC k U) => Path (FinC k W) (bind (bind d f) g) (bind d (fun (u : U) => bind (f u) g))) (fun (r : Fin k) => refl) (fun (u : U) => refl) m
+def unitFree : (A : Type 0) -> (B : A -> Type 0) -> (V : Type 0) -> V -> Free A B V := fun (A : Type 0) (B : A -> Type 0) (V : Type 0) (v : V) => pure v
+def leftFree : (A : Type 0) -> (B : A -> Type 0) -> (V : Type 0) -> (W : Type 0) -> (a : V) -> (f : V -> Free A B W) -> Path (Free A B W) (bind (unitFree A B V a) f) (f a) :=
+  fun (A : Type 0) (B : A -> Type 0) (V : Type 0) (W : Type 0) (a : V) (f : V -> Free A B W) => refl
+def rightFree : (A : Type 0) -> (B : A -> Type 0) -> (V : Type 0) -> (m : Free A B V) -> Path (Free A B V) (bind m (fun (v : V) => pure v)) m :=
+  fun (A : Type 0) (B : A -> Type 0) (V : Type 0) (m : Free A B V) => elim (fun (d : Free A B V) => Path (Free A B V) (bind d (fun (v : V) => pure v)) d) (fun (s : A) (k : B s -> Free A B V) (h : (b : B s) -> Path (Free A B V) (bind (k b) (fun (v : V) => pure v)) (k b)) => fun (i : I) => op A B V s (fun (b : B s) => h b @ i)) (fun (v : V) => refl) m
+def assocFree : (A : Type 0) -> (B : A -> Type 0) -> (U : Type 0) -> (V : Type 0) -> (W : Type 0) -> (f : U -> Free A B V) -> (g : V -> Free A B W) -> (m : Free A B U) -> Path (Free A B W) (bind (bind m f) g) (bind m (fun (u : U) => bind (f u) g)) :=
+  fun (A : Type 0) (B : A -> Type 0) (U : Type 0) (V : Type 0) (W : Type 0) (f : U -> Free A B V) (g : V -> Free A B W) (m : Free A B U) => elim (fun (d : Free A B U) => Path (Free A B W) (bind (bind d f) g) (bind d (fun (u : U) => bind (f u) g))) (fun (s : A) (k : B s -> Free A B U) (h : (b : B s) -> Path (Free A B W) (bind (bind (k b) f) g) (bind (k b) (fun (u : U) => bind (f u) g))) => fun (i : I) => op A B W s (fun (b : B s) => h b @ i)) (fun (u : U) => refl) m

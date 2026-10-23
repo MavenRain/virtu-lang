@@ -11,3 +11,4 @@ dangling-at.lang PARSE_EXPECT
 system-top.lang PARSE_EXPECT
 cofamily-no-body.lang PARSE_EXPECT
 text-literal.lang LEX_CHAR
+cell-no-ops.lang PARSE_EXPECT

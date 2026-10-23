@@ -157,6 +157,7 @@ static int starts_atom(TokKind kind) {
     case TOK_KW_FUN:
     case TOK_KW_FAMILY:
     case TOK_KW_COFAMILY:
+    case TOK_KW_CELL:
     case TOK_KW_AXIOM:
     case TOK_KW_AND:
       return 0;
@@ -393,6 +394,7 @@ static const Term *parse_atom(Parser *p) {
     case TOK_KW_FUN:
     case TOK_KW_FAMILY:
     case TOK_KW_COFAMILY:
+    case TOK_KW_CELL:
     case TOK_KW_AXIOM:
     case TOK_KW_AND:
       break;
@@ -562,6 +564,43 @@ static int parse_cofamily(Parser *p, Decl *d) {
   return d->body != NULL;
 }
 
+/* `cell NAME params := op : T | ...` (S2 K1): the 0-cells over the carrier,
+   the last parameter. Each 0-cell has its type in RESULT and no fields.
+   The checker examines the types and makes the family (K3). */
+static int parse_cell(Parser *p, Decl *d) {
+  bump(p);
+  d->kind = DECL_CELL;
+  d->is_rec = 0;
+  d->index = NULL;
+  d->type = NULL;
+  d->body = NULL;
+  d->name = take_name(p, "a cell name");
+  if (d->name == NULL) return 0;
+  p->def = d->name;
+  if (!parse_fields(p, &d->params, &d->param_count) || !expect(p, TOK_DEFINE, "':='")) return 0;
+  Ctor *ctors = NULL;
+  size_t count = 0;
+  size_t cap = 0;
+  do {
+    ctors = grow(p, ctors, count, &cap, sizeof *ctors);
+    if (ctors == NULL) return 0;
+    Ctor *ctor = &ctors[count];
+    count++;
+    ctor->line = cur(p)->line;
+    ctor->col = cur(p)->col;
+    ctor->fields = NULL;
+    ctor->field_count = 0;
+    ctor->boundary = NULL;
+    ctor->name = take_name(p, "a 0-cell name");
+    if (ctor->name == NULL || !expect(p, TOK_COLON, "':'")) return 0;
+    ctor->result = parse_term(p);
+    if (ctor->result == NULL) return 0;
+  } while (eat(p, TOK_BAR));
+  d->ctors = ctors;
+  d->ctor_count = count;
+  return 1;
+}
+
 /* `and NAME params [: index] := ctor | ...` (S6): the next sort of the
    block that FIRST starts. Only a `family` declaration starts a block. */
 static int at_and(const Parser *p, const Decl *first) {
@@ -588,6 +627,7 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_KW_AXIOM: return parse_axiom(p, d);
     case TOK_KW_FAMILY: return parse_family(p, d);
     case TOK_KW_COFAMILY: return parse_cofamily(p, d);
+    case TOK_KW_CELL: return parse_cell(p, d);
     case TOK_KW_ELIM:
     case TOK_EOF:
     case TOK_IDENT:
@@ -614,7 +654,7 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_KW_AND:
       break;
   }
-  return fail_at(p, tok, "'def', 'axiom', 'family' or 'cofamily'");
+  return fail_at(p, tok, "'def', 'axiom', 'family', 'cofamily' or 'cell'");
 }
 
 int parse_source(Arena *arena, const char *source, Origin origin, const TokenList *toks, DeclList *list, Diag *diag) {
