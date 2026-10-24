@@ -8,6 +8,8 @@ const {spawnSync} = require('node:child_process');
 const kit = path.resolve(process.argv[2] || '.');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'langc-regressions-'));
 const compiler = path.join(kit, 'build/langc');
+// The gate compiler also loads domain/fixtures.lang (Vec and the other kernel fixtures).
+const gateCompiler = path.join(kit, 'build/langc-gate');
 let sequence = 0;
 let failed = 0;
 let checked = 0;
@@ -87,8 +89,8 @@ try {
       ['def plus : Nat -> Nat := natAdd 1\n', 'Option (Path (Nat -> Nat) plus plus)', 'some refl'],
     ];
     for (const [prefix, type, value] of cases) {
-      const original = built(`${prefix}def holder : ${type} := ${value}`).instances[0];
-      const replay = built(`${prefix}def replay : ${original.type} := ${value}`).instances[0];
+      const original = built(`${prefix}def holder : ${type} := ${value}`, gateCompiler).instances[0];
+      const replay = built(`${prefix}def replay : ${original.type} := ${value}`, gateCompiler).instances[0];
       assert.deepEqual(replay.value, original.value);
     }
   });

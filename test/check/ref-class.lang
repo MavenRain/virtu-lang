@@ -1,0 +1,2 @@
+-- A reference of the wrong class: an Avatar where a VirtuCard is needed.
+def wrong : Nat := cardId (avatarRef Empty 0)

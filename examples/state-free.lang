@@ -1,14 +1,14 @@
 -- A state cell with no laws (S2, K10, C5). get reads the state and put
--- writes it. run folds a program into a function from S to S * X. Each
+-- writes it. runState folds a program into a function from S to S * X. Each
 -- program is a function of a step d: a top-level State value holds a
 -- function, which has no JSON form.
 cell State (S : Type 0) (X : Type 0) := get : (S -> X) -> X | put : S -> X -> X
 def prog : (d : Nat) -> State Nat Nat := fun (d : Nat) => get Nat Nat (fun (s : Nat) => put Nat Nat (natAdd s d) (get Nat Nat (fun (t : Nat) => pure (natMul t 10))))
-def run : State Nat Nat -> Nat -> Prod Nat Nat :=
+def runState : State Nat Nat -> Nat -> Prod Nat Nat :=
   fun (p : State Nat Nat) => fold (fun (k : Nat -> Nat -> Prod Nat Nat) => fun (s : Nat) => k s s) (fun (s2 : Nat) (r : Nat -> Prod Nat Nat) => fun (s : Nat) => r s2) (fun (v : Nat) => fun (s : Nat) => pair s v) p
 def after : (d : Nat) -> State Nat Nat := fun (d : Nat) => bind (prog d) (fun (v : Nat) => put Nat Nat v (pure (natAdd v 1)))
-def finalState : (s : Nat) -> Nat := fun (s : Nat) => first (run (prog 1) s)
-def result : (s : Nat) -> Nat := fun (s : Nat) => second (run (prog 1) s)
-def afterState : (s : Nat) -> Nat := fun (s : Nat) => first (run (after 1) s)
-def afterResult : (s : Nat) -> Nat := fun (s : Nat) => second (run (after 1) s)
-def pairAt4 : Prod Nat Nat := run (prog 1) 4
+def finalState : (s : Nat) -> Nat := fun (s : Nat) => first (runState (prog 1) s)
+def result : (s : Nat) -> Nat := fun (s : Nat) => second (runState (prog 1) s)
+def afterState : (s : Nat) -> Nat := fun (s : Nat) => first (runState (after 1) s)
+def afterResult : (s : Nat) -> Nat := fun (s : Nat) => second (runState (after 1) s)
+def pairAt4 : Prod Nat Nat := runState (prog 1) 4

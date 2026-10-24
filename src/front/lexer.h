@@ -8,6 +8,7 @@ typedef enum {
   TOK_EOF,
   TOK_IDENT,
   TOK_NAT,
+  TOK_STR,      /* a string literal in double quotes (S5) */
   TOK_LPAREN,
   TOK_RPAREN,
   TOK_COLON,
@@ -42,6 +43,8 @@ typedef struct {
   const char *text;
   size_t len;
   uint64_t nat;
+  const char *str; /* TOK_STR: the bytes after the escapes, NUL at the end */
+  size_t str_len;  /* TOK_STR: the byte count */
   int line;
   int col;
 } Token;

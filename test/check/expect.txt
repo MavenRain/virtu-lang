@@ -71,7 +71,6 @@ codata-out.lang TYPE_MISMATCH
 codata-fold.lang CODATA_FOLD
 codata-elim.lang CODATA_FOLD
 codata-bisim.lang PATH_END
-text-removed.lang NAME_UNKNOWN
 int64-removed.lang NAME_UNKNOWN
 json-removed.lang NAME_UNKNOWN
 log-removed.lang NAME_UNKNOWN
@@ -115,3 +114,12 @@ cocell-map-neutral-universe.lang TYPE_MISMATCH
 cocell-extend-dependent-result.lang TYPE_MISMATCH
 cocell-map-dependent-result.lang TYPE_MISMATCH
 cocell-internal-name.lang LEX_CHAR
+text-op.lang NAME_UNKNOWN
+ref-class.lang TYPE_MISMATCH
+virt-op-name.lang REFUSE_NAME
+text-eq-nat.lang TYPE_MISMATCH
+string-escape.lang LEX_STR_ESCAPE
+string-control.lang LEX_STR_CONTROL
+credits-overflow.lang EVAL_CREDITS_OVERFLOW
+ref-unknown.lang EVAL_REF_UNKNOWN
+ref-unknown-type.lang TYPE_MISMATCH

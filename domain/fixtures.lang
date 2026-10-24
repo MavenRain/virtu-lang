@@ -1,0 +1,89 @@
+-- Kernel fixtures (S5, K5 (a)): the families, cofamilies and defs that are
+-- not cell monads, duals or carriers. Only the gate loads this file: the
+-- Makefile puts it after domain/domain.lang in build/domain-gate.c, for
+-- build/langc-gate and build/path-regressions. build/langc loads
+-- domain/domain.lang only. Each name here is still a core name (rule R4).
+-- The circle, a higher inductive family (S4a, R1 (a)). The path
+-- constructor loop goes from base to base.
+family S1 := base | loop (i : I) [ ~i -> base, i -> base ]
+-- The propositional truncation (S4b, R5 (a)): squash1 is a path between
+-- any two points, so the squash1 fold case has the type isProp RES. A
+-- field name is a core name (rule R4), so the names have a family prefix.
+family Trunc1 (A : Type 0) := trunc1 (truncOf : A) | squash1 (squashFrom : Trunc1 A) (squashTo : Trunc1 A) (i : I) [ ~i -> squashFrom, i -> squashTo ]
+-- The set truncation (S4c, R5 (a)): squash0 is a square between any two
+-- paths with the same ends, so the squash0 fold case has the type isSet
+-- RES (R8 (a)). The case binds the folded ends and the folded paths.
+family Trunc0 (A : Type 0) := trunc0 (trunc0Of : A) | squash0 (squash0From : Trunc0 A) (squash0To : Trunc0 A) (squash0Left : Path (Trunc0 A) squash0From squash0To) (squash0Right : Path (Trunc0 A) squash0From squash0To) (i : I) (j : I) [ ~i -> squash0Left @ j, i -> squash0Right @ j, ~j -> squash0From, j -> squash0To ]
+-- The set quotient (S4c, R5 (a)): quotEq is a path from quot A R a to
+-- quot A R b for each proof r of R a b. The type of the R parameter uses
+-- the A parameter. quotSquash has the squash0 shape at Quot A R, so the
+-- quotSquash fold case has the type isSet RES (R8 (a)).
+family Quot (A : Type 0) (R : A -> A -> Type 0) := quot (quotOf : A)
+  | quotEq (quotA : A) (quotB : A) (quotR : R quotA quotB) (i : I) [ ~i -> quot A R quotA, i -> quot A R quotB ]
+  | quotSquash (quotFrom : Quot A R) (quotTo : Quot A R) (quotLeft : Path (Quot A R) quotFrom quotTo) (quotRight : Path (Quot A R) quotFrom quotTo) (i : I) (j : I)
+    [ ~i -> quotLeft @ j, i -> quotRight @ j, ~j -> quotFrom, j -> quotTo ]
+-- A vector, an indexed higher inductive family (S2, Q1 and Q2 (a)): the
+-- index is the guest Nat, vswap is a path constructor at an index.
+family Vec (A : Type 0) : Nat -> Type 0 := vnil : Vec A 0
+  | vcons (consLen : Nat) (consHead : A) (consTail : Vec A consLen) : Vec A (succ consLen)
+  | vswap (swapLen : Nat) (swapX : A) (swapY : A) (swapRest : Vec A swapLen) (i : I) : Vec A (succ (succ swapLen))
+    [ ~i -> vcons A (succ swapLen) swapX (vcons A swapLen swapY swapRest), i -> vcons A (succ swapLen) swapY (vcons A swapLen swapX swapRest) ]
+-- A mutual block (S2, Q1 and Q5 (a)): Ratified is indexed by Charter, adopt
+-- names Ratified, adoptTwice is a path constructor, no squash constructor.
+family Charter (R : Type 0) := genesis
+  | adopt (adoptBase : Charter R) (adoptRule : Ratified R adoptBase)
+  | adoptTwice (twiceBase : Charter R) (twiceRule : R) (i : I)
+    [ ~i -> adopt R twiceBase (ratify R twiceBase twiceRule),
+      i -> adopt R (adopt R twiceBase (ratify R twiceBase twiceRule)) (ratify R (adopt R twiceBase (ratify R twiceBase twiceRule)) twiceRule) ]
+and Ratified (R : Type 0) : Charter R -> Type 0 := ratify (ratifyBase : Charter R) (ratifyRule : R) : Ratified R ratifyBase
+-- The cofamilies Stream, Colist and Mealy (S4, Q1, Q10): each is the
+-- greatest fixed point of a layer family at
+-- its last parameter X. `out` gives one layer; `unfold g s` makes a value
+-- from the step g and the seed s.
+family StreamF (A : Type 0) (X : Type 0) := scons (shead : A) (stail : X)
+cofamily Stream (A : Type 0) := StreamF A
+family ColistF (A : Type 0) (X : Type 0) := cnil | ccons (chead : A) (ctail : X)
+cofamily Colist (A : Type 0) := ColistF A
+family MealyF (I : Type 0) (O : Type 0) (X : Type 0) := mealy (mealyOut : O) (mealyNext : I -> X)
+cofamily Mealy (I : Type 0) (O : Type 0) := MealyF I O
+-- Kan library (S2a, R6 (a)): transport, subst, J and the J rule as a path
+-- (JRefl, O11), all by transp.
+def transport : (X : Type 0) -> (Y : Type 0) -> Path (Type 0) X Y -> X -> Y :=
+  fun (X : Type 0) => fun (Y : Type 0) => fun (p : Path (Type 0) X Y) => fun (a : X) => transp (fun (i : I) => p @ i) i0 a
+def subst : (A : Type 0) -> (B : A -> Type 0) -> (x : A) -> (y : A) -> Path A x y -> B x -> B y :=
+  fun (A : Type 0) => fun (B : A -> Type 0) => fun (x : A) => fun (y : A) => fun (p : Path A x y) => fun (b : B x) =>
+    transp (fun (i : I) => B (p @ i)) i0 b
+def J : (A : Type 0) -> (x : A) -> (P : (y : A) -> Path A x y -> Type 0) -> P x refl -> (y : A) -> (p : Path A x y) -> P y p :=
+  fun (A : Type 0) => fun (x : A) => fun (P : (y : A) -> Path A x y -> Type 0) => fun (d : P x refl) => fun (y : A) => fun (p : Path A x y) =>
+    transp (fun (i : I) => P (p @ i) (fun (j : I) => p @ (i /\ j))) i0 d
+def JRefl : (A : Type 0) -> (x : A) -> (P : (y : A) -> Path A x y -> Type 0) -> (d : P x refl) -> Path (P x refl) (J A x P d x refl) d :=
+  fun (A : Type 0) => fun (x : A) => fun (P : (y : A) -> Path A x y -> Type 0) => fun (d : P x refl) =>
+    fun (i : I) => transp (fun (_ : I) => P x refl) i d
+-- Path composition (S2b, R2 (a)): trans by hcomp, with the tube x on ~j
+-- and q on j, and the base p.
+def trans : (A : Type 0) -> (x : A) -> (y : A) -> (z : A) -> Path A x y -> Path A y z -> Path A x z :=
+  fun (A : Type 0) => fun (x : A) => fun (y : A) => fun (z : A) => fun (p : Path A x y) => fun (q : Path A y z) =>
+    fun (j : I) => hcomp A (~j \/ j) (fun (i : I) => [ ~j -> x, j -> q @ i ]) (p @ j)
+-- uaArrow (S3c): agda/cubical ua-> with a constant C. A path h a from
+-- f0 a to f1 (witness e a) for each a gives a path of functions over ua e
+-- from f0 to f1. At i0 the hcomp is its ~i tube at j = i1, h a @ i0 =
+-- f0 a; at i1 it is its i tube, f1 a. The base is f1 (unglue a).
+def uaArrow : (A : Type 0) -> (B : Type 0) -> (C : Type 0) -> (e : Equiv A B) -> (f0 : A -> C) -> (f1 : B -> C) ->
+  (h : (a : A) -> Path C (f0 a) (f1 (witness e a))) -> PathP (fun (i : I) => (ua A B e @ i) -> C) f0 f1 :=
+  fun (A : Type 0) => fun (B : Type 0) => fun (C : Type 0) => fun (e : Equiv A B) => fun (f0 : A -> C) => fun (f1 : B -> C) =>
+  fun (h : (a : A) -> Path C (f0 a) (f1 (witness e a))) =>
+    fun (i : I) => fun (a : ua A B e @ i) => hcomp C (~i \/ i) (fun (j : I) => [ ~i -> h a @ ~j, i -> f1 a ]) (f1 (unglue a))
+-- Fin subtraction (S5a, R3 (a)): a - b mod n as a plus the negation of b.
+def finSub : (n : Nat) -> Fin n -> Fin n -> Fin n :=
+  fun (n : Nat) (a b : Fin n) => finAdd n a (finNeg n b)
+def isSetFin : (n : Nat) -> isSet (Fin n) := fun (n : Nat) => hedberg (Fin n) (decEqFin n)
+-- Decidable equality of pairs (S6c item 8, ruling R11 (a)). decEqProd
+-- decides the first components, then the second ones. Each inr case maps
+-- a path of pairs to a path of one component (a projection along the
+-- path). decEqSigmaFin is decEqProd at Fin a and Fin b: the second
+-- component of Sigma (e : Fin a) (Fin b) does not depend on e.
+def decEqProd : (A : Type 0) -> (B : Type 0) -> ((a : A) -> (b : A) -> Dec (Path A a b)) -> ((a : B) -> (b : B) -> Dec (Path B a b)) -> (x : (e : A) * B) -> (y : (e : A) * B) -> Dec (Path ((e : A) * B) x y) :=
+  fun (A : Type 0) (B : Type 0) (da : (a : A) -> (b : A) -> Dec (Path A a b)) (db : (a : B) -> (b : B) -> Dec (Path B a b)) (x : (e : A) * B) (y : (e : A) * B) =>
+    either (fun (p : Path A (witness x) (witness y)) => either (fun (q : Path B (payload x) (payload y)) => inl (fun (i : I) => pack (p @ i) (q @ i))) (fun (nq : Not (Path B (payload x) (payload y))) => inr (fun (r : Path ((e : A) * B) x y) => nq (fun (i : I) => payload (r @ i)))) (db (payload x) (payload y))) (fun (np : Not (Path A (witness x) (witness y))) => inr (fun (r : Path ((e : A) * B) x y) => np (fun (i : I) => witness (r @ i)))) (da (witness x) (witness y))
+def decEqSigmaFin : (a : Nat) -> (b : Nat) -> (x : (e : Fin a) * Fin b) -> (y : (e : Fin a) * Fin b) -> Dec (Path ((e : Fin a) * Fin b) x y) :=
+  fun (a : Nat) (b : Nat) => decEqProd (Fin a) (Fin b) (decEqFin a) (decEqFin b)

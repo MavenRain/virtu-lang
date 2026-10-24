@@ -1,0 +1,92 @@
+-- The Virt library (S5, K9): each of the 28 0-cells of Virt through run,
+-- from the empty world. resultOf gives the result, worldOf the world.
+-- main is the PLAN section 6 program; test/json/virt.json is its document.
+def resultOf : (X : Type 0) -> Virt X -> X := fun (X : Type 0) (p : Virt X) => second (run X p nil)
+def worldOf : Virt Unit -> W := fun (p : Virt Unit) => first (run Unit p nil)
+-- An avatar "Ada" with a new card of m credits.
+def startCard : (R : Type 0) -> Credits -> (Avatar -> VirtuCard -> Virt R) -> Virt R :=
+  fun (R : Type 0) (m : Credits) (k : Avatar -> VirtuCard -> Virt R) =>
+    avatar R "Ada" explorer (fun (a : Avatar) => createVirtucard R a m (fun (c : VirtuCard) => k a c))
+-- Avatars: avatar, avatarName, avatarRole, avatarCard, attachCard,
+-- avatarSet, avatarGet, avatarInventory.
+def newAvatar : Nat := resultOf Nat (avatar Nat "Ada" explorer (fun (a : Avatar) => pure (avatarId a)))
+def nameOf : Text := resultOf Text (avatar Text "Ada" explorer (fun (a : Avatar) => avatarName Text a (fun (n : Text) => pure n)))
+def roleOf : Role := resultOf Role (avatar Role "Bo" merchant (fun (a : Avatar) => avatarRole Role a (fun (r : Role) => pure r)))
+def noCard : Nat := resultOf Nat (avatar Nat "Ada" explorer (fun (a : Avatar) =>
+  avatarCard Nat a (fun (o : Option VirtuCard) => pure (option 0 (fun (c : VirtuCard) => succ (cardId c)) o))))
+def attached : Nat := resultOf Nat (startCard Nat 100 (fun (a : Avatar) (c : VirtuCard) => attachCard Nat a c
+  (avatarCard Nat a (fun (o : Option VirtuCard) => pure (option 0 (fun (d : VirtuCard) => succ (cardId d)) o)))))
+def guild : Value := resultOf Value (avatar Value "Ada" explorer (fun (a : Avatar) =>
+  avatarSet Value a "guild" "north" (avatarGet Value a "guild" (fun (o : Option Value) => pure (option "" (fun (v : Value) => v) o)))))
+def noGuild : Value := resultOf Value (avatar Value "Ada" explorer (fun (a : Avatar) =>
+  avatarGet Value a "guild" (fun (o : Option Value) => pure (option "" (fun (v : Value) => v) o))))
+def emptyBag : Nat := resultOf Nat (avatar Nat "Ada" explorer (fun (a : Avatar) =>
+  avatarInventory Nat a (fun (v : List VirtualItem) => pure (listSize VirtualItem v))))
+-- Cards: createVirtucard, cardBalance, cardSecurity, tapDenominator,
+-- debit, credit, setSecurity, cardHistory, transfer.
+def balanceOf : Credits := resultOf Credits (startCard Credits 100 (fun (a : Avatar) (c : VirtuCard) =>
+  cardBalance Credits c (fun (b : Credits) => pure b)))
+def levelAtStart : Fin 4 := resultOf (Fin 4) (startCard (Fin 4) 100 (fun (a : Avatar) (c : VirtuCard) =>
+  cardSecurity (Fin 4) c (fun (l : SecurityLevel) => pure (securityToFin l))))
+def levelSet : Fin 4 := resultOf (Fin 4) (startCard (Fin 4) 100 (fun (a : Avatar) (c : VirtuCard) =>
+  setSecurity (Fin 4) c (high Empty) (cardSecurity (Fin 4) c (fun (l : SecurityLevel) => pure (securityToFin l)))))
+def tapped : Credits := resultOf Credits (startCard Credits 100 (fun (a : Avatar) (c : VirtuCard) =>
+  tapDenominator Credits c 5 (cardBalance Credits c (fun (b : Credits) => pure b))))
+def debitOk : Credits := resultOf Credits (startCard Credits 100 (fun (a : Avatar) (c : VirtuCard) =>
+  debit Credits c 30 (fun (o : Option Unit) => cardBalance Credits c (fun (b : Credits) => pure (option 0 (fun (u : Unit) => b) o)))))
+def debitShort : Credits := resultOf Credits (startCard Credits 100 (fun (a : Avatar) (c : VirtuCard) =>
+  debit Credits c 130 (fun (o : Option Unit) => cardBalance Credits c (fun (b : Credits) => pure (option b (fun (u : Unit) => 0) o)))))
+def afterCredit : Credits := resultOf Credits (startCard Credits 100 (fun (a : Avatar) (c : VirtuCard) =>
+  credit Credits c 7 (cardBalance Credits c (fun (b : Credits) => pure b))))
+def historySize : Nat := resultOf Nat (startCard Nat 100 (fun (a : Avatar) (c : VirtuCard) =>
+  debit Nat c 30 (fun (o : Option Unit) => cardHistory Nat c (fun (h : List Entry) => pure (listSize Entry h)))))
+def lastKind : Fin 7 := resultOf (Fin 7) (startCard (Fin 7) 100 (fun (a : Avatar) (c : VirtuCard) =>
+  debit (Fin 7) c 30 (fun (o : Option Unit) => cardHistory (Fin 7) c (fun (h : List Entry) =>
+  pure (option 0 (fun (e : Entry) => kindToFin (first e)) (listAt Entry h 1))))))
+def transferred : Prod Credits Credits := resultOf (Prod Credits Credits) (startCard (Prod Credits Credits) 100 (fun (a : Avatar) (c : VirtuCard) =>
+  avatar (Prod Credits Credits) "Bo" merchant (fun (b : Avatar) => createVirtucard (Prod Credits Credits) b 10 (fun (d : VirtuCard) =>
+  transfer (Prod Credits Credits) c d 30 (fun (o : Option Unit) => cardBalance (Prod Credits Credits) c (fun (x : Credits) =>
+  cardBalance (Prod Credits Credits) d (fun (y : Credits) => pure (pair x y))))))))
+def transferSame : Nat := resultOf Nat (startCard Nat 100 (fun (a : Avatar) (c : VirtuCard) =>
+  transfer Nat c c 30 (fun (o : Option Unit) => pure (option 0 (fun (u : Unit) => 1) o))))
+-- Terminals: terminal, listItem, listVirtualItem, terminalInventory,
+-- purchaseItem, purchase.
+def newTerminal : Nat := resultOf Nat (terminal Nat "Bazaar" "tools" (fun (t : VirtualTerminal) => pure (terminalId t)))
+def listed : Nat := resultOf Nat (terminal Nat "Bazaar" "tools" (fun (t : VirtualTerminal) =>
+  listItem Nat t "Lamp" 20 "a lamp" (terminalInventory Nat t (fun (s : List Listing) => pure (listSize Listing s)))))
+def listedValue : Credits := resultOf Credits (item Credits "Gem" "jewel" 10 (fun (z : VirtualItem) =>
+  setRarity Credits z (rare Empty) (terminal Credits "Bazaar" "tools" (fun (t : VirtualTerminal) =>
+  listVirtualItem Credits t z (terminalInventory Credits t (fun (s : List Listing) =>
+  pure (option 0 (fun (l : Listing) => first (second l)) (listAt Listing s 0))))))))
+def bought : Credits := resultOf Credits (startCard Credits 100 (fun (a : Avatar) (c : VirtuCard) =>
+  terminal Credits "Bazaar" "tools" (fun (t : VirtualTerminal) => listItem Credits t "Lamp" 20 "a lamp"
+  (purchaseItem Credits t a "Lamp" c (fun (o : Option VirtualItem) => cardBalance Credits c (fun (b : Credits) => pure b))))))
+def boughtBag : Nat := resultOf Nat (startCard Nat 100 (fun (a : Avatar) (c : VirtuCard) => attachCard Nat a c
+  (terminal Nat "Bazaar" "tools" (fun (t : VirtualTerminal) => listItem Nat t "Lamp" 20 "a lamp"
+  (purchase Nat t "Lamp" c (fun (o : Option VirtualItem) => avatarInventory Nat a (fun (v : List VirtualItem) => pure (listSize VirtualItem v))))))))
+def soldOut : Nat := resultOf Nat (startCard Nat 100 (fun (a : Avatar) (c : VirtuCard) => attachCard Nat a c
+  (terminal Nat "Bazaar" "tools" (fun (t : VirtualTerminal) => listItem Nat t "Lamp" 20 "a lamp"
+  (purchase Nat t "Lamp" c (fun (o : Option VirtualItem) => terminalInventory Nat t (fun (s : List Listing) => pure (listSize Listing s))))))))
+def notListed : Nat := resultOf Nat (startCard Nat 100 (fun (a : Avatar) (c : VirtuCard) =>
+  terminal Nat "Bazaar" "tools" (fun (t : VirtualTerminal) => listItem Nat t "Lamp" 20 "a lamp"
+  (purchaseItem Nat t a "Rug" c (fun (o : Option VirtualItem) => pure (option 0 (fun (z : VirtualItem) => 1) o))))))
+def tooDear : Credits := resultOf Credits (startCard Credits 10 (fun (a : Avatar) (c : VirtuCard) =>
+  terminal Credits "Bazaar" "tools" (fun (t : VirtualTerminal) => listItem Credits t "Lamp" 20 "a lamp"
+  (purchaseItem Credits t a "Lamp" c (fun (o : Option VirtualItem) => cardBalance Credits c (fun (b : Credits) => pure (option b (fun (z : VirtualItem) => 0) o)))))))
+-- Items: item, setRarity, itemValue, itemSet, itemGet.
+def newItem : Nat := resultOf Nat (item Nat "Gem" "jewel" 10 (fun (z : VirtualItem) => pure (itemId z)))
+def plainValue : Credits := resultOf Credits (item Credits "Gem" "jewel" 10 (fun (z : VirtualItem) =>
+  itemValue Credits z (fun (v : Credits) => pure v)))
+def rareValue : Credits := resultOf Credits (item Credits "Gem" "jewel" 10 (fun (z : VirtualItem) =>
+  setRarity Credits z (legendary Empty) (itemValue Credits z (fun (v : Credits) => pure v))))
+def colour : Value := resultOf Value (item Value "Gem" "jewel" 10 (fun (z : VirtualItem) =>
+  itemSet Value z "color" "red" (itemGet Value z "color" (fun (o : Option Value) => pure (option "" (fun (v : Value) => v) o)))))
+def recoloured : Value := resultOf Value (item Value "Gem" "jewel" 10 (fun (z : VirtualItem) =>
+  itemSet Value z "color" "red" (itemSet Value z "color" "blue"
+  (itemGet Value z "color" (fun (o : Option Value) => pure (option "" (fun (v : Value) => v) o))))))
+-- The PLAN section 6 program.
+def main : Virt Unit := avatar Unit "Ada" explorer (fun (a : Avatar) =>
+  createVirtucard Unit a 100 (fun (c : VirtuCard) => attachCard Unit a c (setSecurity Unit c (high Empty)
+  (terminal Unit "Bazaar" "tools" (fun (t : VirtualTerminal) => listItem Unit t "Lamp" 20 "a lamp"
+  (avatarSet Unit a "guild" "north" (purchase Unit t "Lamp" c (fun (o : Option VirtualItem) => pure unit))))))))
+def worldSize : Nat := listSize Instance (worldOf main)

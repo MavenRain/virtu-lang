@@ -341,6 +341,27 @@ static int domain_json_contains(const char *label, const char *domain, const cha
   return ok;
 }
 
+/* 1 when DOMAIN and SOURCE check and json_document refuses with CODE. */
+static int domain_json_refuses(const char *label, const char *domain, const char *source, const char *code) {
+  cases_run++;
+  Arena arena;
+  Machine m;
+  Diag diag;
+  const char *text = NULL;
+  size_t len = 0;
+  int ok;
+  arena_init(&arena, (size_t)128 << 20);
+  ok = domain_checked(&arena, &m, &diag, domain, source) && !json_document(&m, &text, &len)
+    && diag.set && strcmp(diag.code, code) == 0;
+  if (!ok) {
+    fprintf(stderr, "FAIL %s: expected %s\n", label, code);
+    if (diag.set)
+      diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
 static int json_contains(const char *label, const char *source, const char *expected) {
   return domain_json_contains(label, "", source, expected);
 }
@@ -798,10 +819,10 @@ int main(void) {
     "family Ax := ax (axN : Nat) and Bx (x : Ax) (y : fold Nat x) := bx\n",
     "def value : Bx (ax 0) 0 := bx (ax 0) 0\n", "HIT_BOUNDARY");
   failed += !domain_refuses("block universe: at Type 0",
-    "family Low := low (high : High) and High := highCtor (big : Type 0)\n",
+    "family Low := lowx (highx : High) and High := highCtor (big : Type 0)\n",
     "def small : Type 0 := Low\n", "TYPE_MISMATCH");
   failed += !domain_accepts("block universe: at Type 1",
-    "family Low := low (high : High) and High := highCtor (big : Type 0)\n",
+    "family Low := lowx (highx : High) and High := highCtor (big : Type 0)\n",
     "def large : Type 1 := Low\n");
   failed += !domain_accepts("higher-order index telescope: 1",
     "family Fx (A : Type 0) : ((Gx : Type 0) -> Gx -> Gx) -> Type 0 := mkx (mkxArg : (T : Type 0) -> T -> T) : Fx A mkxArg and Gx := gx\n",
@@ -829,7 +850,7 @@ int main(void) {
      szS as succ, Unit as Nat, unit as 0 and fresh names beside the domain
      names. */
   failed += !domain_accepts("indexed fold: index arguments are not parameters",
-    "family Vx (A : Type 0) : Nat -> Type 0 := vnx : Vx A 0 | vcx (item : A) : Vx A (succ 0) "
+    "family Vx (A : Type 0) : Nat -> Type 0 := vnx : Vx A 0 | vcx (itemx : A) : Vx A (succ 0) "
     "| segx (i : I) : Vx A 0 [ ~i -> vnx A, i -> vnx A ]\n",
     "def result : Path Nat (fold 0 (fun a => a) refl (vcx Nat 7)) 7 := refl\n");
   failed += !domain_accepts("block fold: Even/Odd one",
@@ -879,6 +900,85 @@ int main(void) {
     "| boxxLoop (boxxAt : Itm) (i : I) [ ~i -> boxx boxxAt, i -> boxx boxxAt ] and Itm := itm\n",
     "def result : Path Boxx (boxx itm) (boxx itm) := fun (i : I) => boxxLoop itm i\n",
     "\"value\":{\"path\":\"boxxLoop\",\"args\":[\"itm\"]}");
+  /* The world rows run against the library (chunk B): Virt, Instance, W
+     and run. JSON_MAIN_RUN cannot occur while the domain has run. */
+  failed += !domain_json_contains("world writer: no main keeps the S1 to S4 form", "",
+    "def seed : Nat := 3\n",
+    "{\"virtu-lang\":1,\"instances\":[{\"name\":\"seed\",\"type\":\"Nat\",\"value\":3}]}\n");
+  failed += !domain_json_contains("world writer: main at pure unit gives the empty world", "",
+    "def main : Virt Unit := pure unit\n", "{\"virtu-lang\":1,\"instances\":[]}\n");
+  failed += !domain_json_contains("world writer: id, class and state in table order", "",
+    "def main : Virt Unit := avatar Unit \"Ada\" explorer (fun (a : Avatar) =>\n"
+    "  createVirtucard Unit a 100 (fun (c : VirtuCard) => attachCard Unit a c (setSecurity Unit c (high Empty)\n"
+    "  (terminal Unit \"Bazaar\" \"tools\" (fun (t : VirtualTerminal) => listItem Unit t \"Lamp\" 20 \"a lamp\"\n"
+    "  (avatarSet Unit a \"guild\" \"north\" (purchase Unit t \"Lamp\" c (fun (o : Option VirtualItem) => pure unit))))))))\n",
+    "{\"virtu-lang\":1,\"instances\":["
+    "{\"id\":0,\"class\":\"Avatar\",\"state\":{\"name\":\"Ada\",\"role\":\"explorer\",\"virtucard\":1,"
+    "\"attributes\":{\"guild\":\"north\"},\"inventory\":[3]}},"
+    "{\"id\":1,\"class\":\"VirtuCard\",\"state\":{\"owner\":0,\"balance\":80,\"security_level\":\"high\","
+    "\"history\":[{\"kind\":\"create\",\"amount\":100,\"balance\":100},{\"kind\":\"purchase\",\"amount\":20,\"balance\":80}]}},"
+    "{\"id\":2,\"class\":\"VirtualTerminal\",\"state\":{\"name\":\"Bazaar\",\"category\":\"tools\",\"listings\":[]}},"
+    "{\"id\":3,\"class\":\"VirtualItem\",\"state\":{\"name\":\"Lamp\",\"type\":\"tools\",\"base_value\":20,"
+    "\"rarity\":\"common\",\"attributes\":{}}}]}\n");
+  failed += !domain_json_refuses("world writer: main of a type that is not Virt Unit", "",
+    "def main : Virt Nat := pure 0\n", "JSON_MAIN_TYPE");
+  failed += !domain_json_contains("world writer: an avatar with no card", "",
+    "def main : Virt Unit := avatar Unit \"Bo\" merchant (fun (b : Avatar) => pure unit)\n",
+    "{\"virtu-lang\":1,\"instances\":[{\"id\":0,\"class\":\"Avatar\",\"state\":{\"name\":\"Bo\",\"role\":\"merchant\","
+    "\"virtucard\":null,\"attributes\":{},\"inventory\":[]}}]}\n");
+  failed += !domain_json_contains("world writer: two avatars, two cards and a transfer", "",
+    "def main : Virt Unit := avatar Unit \"Ada\" explorer (fun (a : Avatar) =>\n"
+    "  createVirtucard Unit a 100 (fun (c : VirtuCard) => avatar Unit \"Bo\" merchant (fun (b : Avatar) =>\n"
+    "  createVirtucard Unit b 10 (fun (d : VirtuCard) => attachCard Unit a c (attachCard Unit b d\n"
+    "  (transfer Unit c d 30 (fun (o : Option Unit) => pure unit)))))))\n",
+    "{\"virtu-lang\":1,\"instances\":["
+    "{\"id\":0,\"class\":\"Avatar\",\"state\":{\"name\":\"Ada\",\"role\":\"explorer\",\"virtucard\":1,\"attributes\":{},\"inventory\":[]}},"
+    "{\"id\":1,\"class\":\"VirtuCard\",\"state\":{\"owner\":0,\"balance\":70,\"security_level\":\"low\","
+    "\"history\":[{\"kind\":\"create\",\"amount\":100,\"balance\":100},{\"kind\":\"transfer-out\",\"amount\":30,\"balance\":70}]}},"
+    "{\"id\":2,\"class\":\"Avatar\",\"state\":{\"name\":\"Bo\",\"role\":\"merchant\",\"virtucard\":3,\"attributes\":{},\"inventory\":[]}},"
+    "{\"id\":3,\"class\":\"VirtuCard\",\"state\":{\"owner\":2,\"balance\":40,\"security_level\":\"low\","
+    "\"history\":[{\"kind\":\"create\",\"amount\":10,\"balance\":10},{\"kind\":\"transfer-in\",\"amount\":30,\"balance\":40}]}}]}\n");
+  /* The bound builtin (S5) at `langc build`: the def body is evaluated and the
+     JSON writer gives the number. The "credits:" rows test it at a conversion. */
+  failed += !domain_json_contains("bound builtin: build writes creditsCheck 2^64 - 1 as a JSON number", "",
+    "def top : Nat := creditsCheck 18446744073709551615\n",
+    "{\"virtu-lang\":1,\"instances\":[{\"name\":\"top\",\"type\":\"Nat\",\"value\":18446744073709551615}]}\n");
+  failed += !domain_json_refuses("bound builtin: build refuses creditsCheck 2^64", "",
+    "def over : Nat := creditsCheck 18446744073709551616\n", "EVAL_CREDITS_OVERFLOW");
+  /* The reference refusal: id 0 is an Avatar, not a VirtuCard. */
+  failed += !domain_json_refuses("reference refusal: a card reference at an avatar instance", "",
+    "def main : Virt Unit := avatar Unit \"Ada\" explorer (fun (a : Avatar) =>\n"
+    "  cardBalance Unit (cardRef Empty 0) (fun (b : Credits) => pure unit))\n", "EVAL_REF_UNKNOWN");
+  failed += !domain_json_refuses("reference refusal: a self transfer still validates its card", "",
+    "def main : Virt Unit := transfer Unit (cardRef Empty 0) (cardRef Empty 0) 1 (fun (o : Option Unit) => pure unit)\n",
+    "EVAL_REF_UNKNOWN");
+  failed += !domain_json_refuses("reference refusal: insufficient funds still validates the target class", "",
+    "def main : Virt Unit := avatar Unit \"Ada\" explorer (fun (a : Avatar) =>\n"
+    "  createVirtucard Unit a 0 (fun (c : VirtuCard) => transfer Unit c (cardRef Empty 0) 1 (fun (o : Option Unit) => pure unit)))\n",
+    "EVAL_REF_UNKNOWN");
+  failed += !domain_json_refuses("reference refusal: a missing listing still validates the buyer", "",
+    "def main : Virt Unit := avatar Unit \"Ada\" explorer (fun (a : Avatar) =>\n"
+    "  createVirtucard Unit a 0 (fun (c : VirtuCard) => terminal Unit \"Shop\" \"tools\" (fun (t : VirtualTerminal) =>\n"
+    "  purchaseItem Unit t (avatarRef Empty 99) \"missing\" c (fun (o : Option VirtualItem) => pure unit))))\n",
+    "EVAL_REF_UNKNOWN");
+  failed += !domain_json_refuses("reference refusal: a missing listing still validates the card", "",
+    "def main : Virt Unit := avatar Unit \"Ada\" explorer (fun (a : Avatar) =>\n"
+    "  terminal Unit \"Shop\" \"tools\" (fun (t : VirtualTerminal) =>\n"
+    "  purchaseItem Unit t a \"missing\" (cardRef Empty 99) (fun (o : Option VirtualItem) => pure unit)))\n",
+    "EVAL_REF_UNKNOWN");
+  /* The main lookup is by the full name, not by the place or a prefix. */
+  failed += !domain_json_contains("main lookup: main after another def writes the world", "",
+    "def mainly : Nat := 3\n"
+    "def main : Virt Unit := avatar Unit \"Bo\" merchant (fun (b : Avatar) => pure unit)\n",
+    "{\"virtu-lang\":1,\"instances\":[{\"id\":0,\"class\":\"Avatar\",\"state\":{\"name\":\"Bo\",\"role\":\"merchant\","
+    "\"virtucard\":null,\"attributes\":{},\"inventory\":[]}}]}\n");
+  failed += !domain_json_contains("main lookup: a name with the prefix main is not main", "",
+    "def mainly : Nat := 3\n",
+    "{\"virtu-lang\":1,\"instances\":[{\"name\":\"mainly\",\"type\":\"Nat\",\"value\":3}]}\n");
+  /* The Text escapes: each escape of a string literal, and the JSON form. */
+  failed += !domain_json_contains("Text escapes: a string literal to JSON", "",
+    "def t : Text := \"a\\\"b\\\\c\\nd\\te\\x41\"\n",
+    "{\"virtu-lang\":1,\"instances\":[{\"name\":\"t\",\"type\":\"Text\",\"value\":\"a\\u0022b\\u005cc\\u000ad\\u0009eA\"}]}\n");
   failed += !domain_refuses("elim cannot use unfinished constructor slots in a field type",
     "family Xx := zxx | packxx (pxx : Xx) (qxx : Path Nat (elim (fun (v : Xx) => Nat) 0 0 0 pxx) 0) "
     "| edgexx (i : I) [ ~i -> zxx, i -> zxx ]\n",
@@ -913,13 +1013,13 @@ int main(void) {
     "def result : Nat := 0\n", "TYPE_MISMATCH");
   failed += !domain_roundtrip("elim motive inference distinguishes a case from the scrutinee",
     "family Fx := fx0 | fx1 family Gx := gx\n",
-    "def run : Fx -> Gx := fun (x : Fx) => elim (fun (u : Fx) => Gx) gx gx x\n");
+    "def runx : Fx -> Gx := fun (x : Fx) => elim (fun (u : Fx) => Gx) gx gx x\n");
   failed += !domain_accepts("bare partial elim supplies the scrutinee before selecting a family",
     "family Fx := fx0 | fx1 family Gx := gx\n",
-    "def run : Fx -> Gx := elim (fun u => Gx) gx gx\n");
+    "def runx : Fx -> Gx := elim (fun u => Gx) gx gx\n");
   failed += !domain_roundtrip("elim motive inference validates arguments after a function result",
     "family Fx := fx0 | fx1 family Gx := gx family Hx := hx0 | hx1 | hx2\n",
-    "def run : Fx -> Hx -> Gx := fun (x : Fx) (y : Hx) => "
+    "def runx : Fx -> Hx -> Gx := fun (x : Fx) (y : Hx) => "
     "elim (fun (u : Fx) => Hx -> Gx) (fun (z : Hx) => gx) (fun (z : Hx) => gx) x y\n");
   failed += !domain_roundtrip("indexed dependent elim motive round trip", "",
     "def identityProof : (n : Nat) -> (v : Vec Nat n) -> Path (Vec Nat n) v v := fun (n : Nat) (v : Vec Nat n) => "
@@ -1182,6 +1282,68 @@ int main(void) {
      as for a transp neutral. K11 predicted the rule off. */
   failed += !accepts("bisimulation rule: eta for an hcomp at a cofamily",
     "def hp : (w : Stream Nat) -> Path (Path (Stream Nat) w w) (fun (j : I) => unfold (fun (s : Stream Nat) => out s) (hcomp (Stream Nat) (~j \\/ j) (fun (i : I) => [ ~j -> w, j -> w ]) w)) (fun (j : I) => hcomp (Stream Nat) (~j \\/ j) (fun (i : I) => [ ~j -> w, j -> w ]) w) := fun w => refl\n");
+  /* S5 open point 9 (U6): eta contracts an unfold only when its seed type
+     is the cofamily type. No field type of PhK uses P, so the step at the
+     seed type PhK (List Nat) Nat passes the field check. */
+  failed += !domain_refuses("bisimulation rule: no eta at a seed type with a different parameter", "",
+    "cocell PhK (P : Type 0) (X : Type 0) := phK : X -> X\n"
+    "def same : Path (PhK Nat Nat) (unfold (fun (s : PhK (List Nat) Nat) => nodePhK Nat Nat (PhK (List Nat) Nat) (extract s) (phK (out s))) "
+    "(unfold (fun (n : Nat) => nodePhK (List Nat) Nat Nat n (succ n)) 0)) (unfold (fun (n : Nat) => nodePhK Nat Nat Nat n (succ n)) 0) := refl\n",
+    "PATH_END");
+  failed += !accepts("bisimulation rule: eta at the seed type of the cofamily",
+    "cocell PhK (P : Type 0) (X : Type 0) := phK : X -> X\n"
+    "def base0 : PhK Nat Nat := unfold (fun (n : Nat) => nodePhK Nat Nat Nat n (succ n)) 0\n"
+    "def moved : PhK Nat Nat := unfold (fun (s : PhK Nat Nat) => nodePhK Nat Nat (PhK Nat Nat) (extract s) (phK (out s))) base0\n"
+    "def same : Path (PhK Nat Nat) base0 moved := refl\n");
+  /* S5 K1: Text literals and textEq, the Credits bound, the reference
+     refusal. */
+  failed += !accepts("text: textEq gives some at equal bytes",
+    "def e : Path (Option Unit) (textEq \"ab\" \"ab\") (some unit) := refl\n");
+  failed += !accepts("text: textEq gives none at unequal bytes",
+    "def e : Path (Option Unit) (textEq \"ab\" \"ac\") none := refl\n");
+  failed += !accepts("text: textEq at a variable is stuck",
+    "def v : (a : Text) -> Path (Option Unit) (textEq a \"x\") (textEq a \"x\") := fun a => refl\n");
+  failed += !json_contains("text: empty homogeneous composition computes a literal",
+    "def t : Text := hcomp Text i0 (fun (i : I) => []) \"Ada\"\n", "\"value\":\"Ada\"");
+  failed += !accepts("text: homogeneous composition with a constant live face computes",
+    "def p : Path (Path Text \"Ada\" \"Ada\") refl refl := fun (j : I) => fun (k : I) =>\n"
+    "  hcomp Text j (fun (i : I) => [ j -> \"Ada\" ]) \"Ada\"\n");
+  failed += !domain_refuses("text: composition does not identify different literals", "",
+    "def p : Path Text (hcomp Text i0 (fun (i : I) => []) \"Ada\") \"Bo\" := refl\n", "PATH_END");
+  {
+    const char *const invalid[] = {
+      "\\xff", "\\x80", "\\xc0\\x80", "\\xe2\\x82", "\\xed\\xa0\\x80", "\\xf4\\x90\\x80\\x80", "\xff"
+    };
+    size_t i;
+    for (i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
+      char source[128];
+      snprintf(source, sizeof source, "def t : Text := \"%s\"\n", invalid[i]);
+      failed += !domain_refuses("text: malformed UTF-8 cannot reach JSON", "", source, "LEX_STR_UTF8");
+    }
+  }
+  failed += !json_contains("text: valid UTF-8 and escaped NUL survive JSON",
+    "def t : Text := \"\\x00\\xc2\\x80\\xe0\\xa0\\x80\\xed\\x9f\\xbf\\xf0\\x90\\x80\\x80\\xf4\\x8f\\xbf\\xbf\"\n",
+    "\"value\":\"\\u0000\xc2\x80\xe0\xa0\x80\xed\x9f\xbf\xf0\x90\x80\x80\xf4\x8f\xbf\xbf\"");
+  failed += !accepts("text: each lexer escape gives its byte",
+    "def e : Path (Option Unit) (textEq \"\\x41\\x0a\\x09\\x22\\x5c\" \"A\\n\\t\\\"\\\\\") (some unit) := refl\n");
+  failed += !domain_refuses("text: an unknown escape is a lex refusal", "",
+    "def t : Text := \"\\q\"\n", "LEX_STR_ESCAPE");
+  failed += !domain_refuses("text: a raw control byte is a lex refusal", "",
+    "def t : Text := \"a\x01\"\n", "LEX_STR_CONTROL");
+  failed += !json_contains("text: the JSON escapes of a Text value",
+    "def t : Text := \"a\\\"b\\\\c\\x01\\x7f\"\n", "\"value\":\"a\\u0022b\\u005cc\\u0001\x7f\"");
+  failed += !accepts("credits: creditsCheck keeps 2^64 - 1",
+    "def c : Path Nat (creditsCheck 18446744073709551615) 18446744073709551615 := refl\n");
+  failed += !domain_refuses("credits: creditsCheck refuses 2^64", "",
+    "def c : Path Nat (creditsCheck 18446744073709551616) 0 := refl\n", "EVAL_CREDITS_OVERFLOW");
+  failed += !accepts("credits: creditsCheck at a variable is stuck",
+    "def v : (n : Nat) -> Path Nat (creditsCheck n) (creditsCheck n) := fun n => refl\n");
+  failed += !domain_refuses("reference: refUnknown refuses a literal id", "",
+    "def r : Path Nat (refUnknown Nat 7) 0 := refl\n", "EVAL_REF_UNKNOWN");
+  failed += !accepts("reference: refUnknown at a variable id is stuck",
+    "def r : (n : Nat) -> Path Nat (refUnknown Nat n) (refUnknown Nat n) := fun n => refl\n");
+  failed += !domain_refuses("reference: refUnknown takes A : Type 0 only", "",
+    "def z : Type 0 := refUnknown (Type 0) 3\n", "TYPE_MISMATCH");
   printf("path regressions: %d checked, %d failed\n", cases_run, failed);
   return failed != 0;
 }

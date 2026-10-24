@@ -1,0 +1,2 @@
+-- A control byte in a string literal.
+def tab : Text := "a	b"

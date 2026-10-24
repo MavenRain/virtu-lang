@@ -101,7 +101,9 @@ typedef enum {
   RULE_GLUE,
   RULE_GLUE_ELEM,
   RULE_UNGLUE,
-  RULE_ABSURD
+  RULE_ABSURD,
+  RULE_TEXT2,       /* textEq: two Text arguments, the result Option Unit (S5) */
+  RULE_REF_UNKNOWN /* refUnknown A id: the result A (S5) */
 } Rule;
 
 typedef struct {
@@ -115,6 +117,7 @@ typedef struct {
 
 static const Builtin BUILTINS[] = {
   {"Nat", 0, RULE_TYPE0, OP_NAT, OP_NAT, 0},
+  {"Text", 0, RULE_TYPE0, OP_TEXT, OP_NAT, 0},
   {"Unit", 0, RULE_TYPE0, OP_UNIT, OP_NAT, 0},
   {"Empty", 0, RULE_TYPE0, OP_EMPTY, OP_NAT, 0},
   {"Prod", 2, RULE_TYPE2, OP_PROD, OP_NAT, 0},
@@ -172,7 +175,10 @@ static const Builtin BUILTINS[] = {
   {"succ", 1, RULE_NAT2, OP_SUCC, OP_NAT, 0},
   {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FIN, 2},
   {"natLe", 2, RULE_NAT2, OP_NAT_LE, OP_FIN, 2},
+  {"creditsCheck", 1, RULE_NAT2, OP_CREDITS_CHECK, OP_NAT, 0},
+  {"textEq", 2, RULE_TEXT2, OP_TEXT_EQ, OP_OPTION, 0},
   {"absurd", 2, RULE_ABSURD, OP_ABSURD, OP_NAT, 0},
+  {"refUnknown", 2, RULE_REF_UNKNOWN, OP_REF_UNKNOWN, OP_NAT, 0},
   {"out", 1, RULE_OUT, OP_OUT, OP_NAT, 0},
   {"extract", 1, RULE_EXTRACT, OP_PROJ, OP_NAT, 0},
   {"extend", 2, RULE_EXTEND, OP_COUNFOLD, OP_NAT, 0},
@@ -2431,7 +2437,8 @@ static const Core *equiv_sigma(Checker *c, const Value *av) {
 /* 1 for OOM and for a failure of the evaluator. These failures are not
    about a branch, so GLUE_EQUIV does not replace them. */
 static int kept_failure(const char *code) {
-  return strcmp(code, "OOM") == 0 || strcmp(code, "INTERNAL") == 0 || strcmp(code, "EVAL_FUEL") == 0 || strcmp(code, "EVAL_DEPTH") == 0;
+  return strcmp(code, "OOM") == 0 || strcmp(code, "INTERNAL") == 0 || strcmp(code, "EVAL_FUEL") == 0 || strcmp(code, "EVAL_DEPTH") == 0
+         || strcmp(code, "EVAL_CREDITS_OVERFLOW") == 0 || strcmp(code, "EVAL_REF_UNKNOWN") == 0;
 }
 
 /* GLUE_EQUIV: the branch B of Glue A phi sys is pack T e of type SIGMA,
@@ -2634,6 +2641,30 @@ static const Core *rule_absurd(Call *k) {
   return op3(c, OP_ABSURD, 0, 2, a, e, NULL);
 }
 
+/* textEq a b (S5): two Text arguments, the result Option Unit. */
+static const Core *rule_text2(Call *k) {
+  Checker *c = k->c;
+  const Value *text = tyop(c, OP_TEXT, 0, NULL, NULL, NULL);
+  const Core *x = check(c, k->args[0], text);
+  const Core *y = x == NULL ? NULL : check(c, k->args[1], text);
+  if (y == NULL)
+    return NULL;
+  k->type = tyop(c, OP_OPTION, 1, tyop(c, OP_UNIT, 0, NULL, NULL, NULL), NULL, NULL);
+  return op3(c, k->b->op, 0, 2, x, y, NULL);
+}
+
+/* refUnknown A id (S5): A : Type 0 (the PLAN type), id a Nat; the result
+   A. The evaluator refuses a literal id (EVAL_REF_UNKNOWN). */
+static const Core *rule_ref_unknown(Call *k) {
+  Checker *c = k->c;
+  const Core *a = check(c, k->args[0], val_univ(c->m, 0));
+  const Core *id = a == NULL ? NULL : check(c, k->args[1], nat_type(c));
+  if (id == NULL)
+    return NULL;
+  k->type = here(c, a);
+  return op3(c, OP_REF_UNKNOWN, 0, 2, a, id, NULL);
+}
+
 /* ENV with the entry at index IX set to V: the entries before IX are
    copied, the tail is shared. */
 static const Env *env_with(Machine *m, const Env *env, uint32_t ix, const Value *v) {
@@ -2833,6 +2864,10 @@ static const Core *rule(Call *k) {
     return rule_unglue(k);
   case RULE_ABSURD:
     return rule_absurd(k);
+  case RULE_TEXT2:
+    return rule_text2(k);
+  case RULE_REF_UNKNOWN:
+    return rule_ref_unknown(k);
   case RULE_NAT2:
     return rule_nat2(k);
   case RULE_FIN_OP:
@@ -3390,11 +3425,24 @@ static const Core *elab_nat(Checker *c, const Term *t, const Value *hint, const 
   return finish(c, k, hint, type);
 }
 
+/* A string literal (S5): a Text value. */
+static const Core *elab_text(Checker *c, const Term *t, const Value *hint, const Value **type) {
+  Core *k = new_core(c, CORE_TEXT);
+  if (k == NULL)
+    return NULL;
+  k->name = t->name;
+  k->nat = t->nat;
+  *type = tyop(c, OP_TEXT, 0, NULL, NULL, NULL);
+  return finish(c, k, hint, type);
+}
+
 static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, const Value **type) {
   switch (t->kind) {
   case TERM_VAR:
   case TERM_APP:
     return elab_spine(c, t, hint, type);
+  case TERM_TEXT:
+    return elab_text(c, t, hint, type);
   case TERM_NAT:
     return elab_nat(c, t, hint, type);
   case TERM_LAM:
@@ -4016,7 +4064,7 @@ static int check_def(Checker *c, const Decl *d) {
 static int term_names(const Term *t, const char *x) {
   if (t == NULL)
     return 0;
-  if (t->kind != TERM_NAT && t->name != NULL && strcmp(t->name, x) == 0)
+  if (t->kind != TERM_NAT && t->kind != TERM_TEXT && t->name != NULL && strcmp(t->name, x) == 0)
     return 1;
   return term_names(t->left, x) || term_names(t->right, x);
 }
@@ -4445,6 +4493,7 @@ static int print_result(Machine *m, const char *name, const Value *v, FILE *out,
     fputs("trap\n", out);
     fprintf(err, "langc: EVAL_TRAP: %s: the value is a trap\n", name);
     return 0;
+  case VAL_TEXT:
   case VAL_BIG:
   case VAL_OP:
     if (!value_print(m, NULL, 0, v, buf, sizeof buf)) {

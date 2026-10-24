@@ -89,6 +89,7 @@ static int internal(Out *o, const char *what) {
 /* 1 when V is a number or a canonical value. A trap is a compile error. */
 static int ready(Out *o, const Value *v) {
   switch (v->kind) {
+  case VAL_TEXT:
   case VAL_BIG:
   case VAL_NAT:
   case VAL_OP:
@@ -226,6 +227,10 @@ static int op_json(Out *o, const Value *type, const Value *v) {
       return internal(o, "a Nat or Fin value that is not a number");
     snprintf(num, sizeof num, "%llu", (unsigned long long)v->nat);
     return put_text(o, num);
+  case OP_TEXT:
+    if (v->kind != VAL_TEXT)
+      return internal(o, "a Text value that is not a literal");
+    return put_quoted(o, v->name, (size_t)v->nat);
   case OP_UNIT:
     return put_text(o, "{}");
   case OP_EMPTY:
@@ -278,6 +283,9 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_FILTER:
   case OP_WITNESS:
   case OP_PAYLOAD:
+  case OP_TEXT_EQ:
+  case OP_CREDITS_CHECK:
+  case OP_REF_UNKNOWN:
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
@@ -349,6 +357,7 @@ static int mentions(const Core *c, uint32_t index) {
     return c->index == index;
   case CORE_GLOBAL:
   case CORE_NAT:
+  case CORE_TEXT:
   case CORE_BIG:
   case CORE_TRAP:
   case CORE_UNIV:
@@ -677,6 +686,7 @@ static int typed_json(Out *o, const Value *type, const Value *v) {
     return refuse(o, "a function");
   case VAL_UNIV:
     return refuse(o, "a type");
+  case VAL_TEXT:
   case VAL_NAT:
   case VAL_TRAP:
   case VAL_LAM:
@@ -719,6 +729,7 @@ static int is_instance(const Machine *m, const DefInfo *d) {
     return !(d->type->op == OP_FAMILY && d->type->inst < m->family_count && m->families[d->type->inst].cofamily);
   case VAL_PATHP:
   case VAL_SIGMA:
+  case VAL_TEXT:
   case VAL_NAT:
   case VAL_TRAP:
   case VAL_LAM:
@@ -751,9 +762,268 @@ static int instance_json(Out *o, uint32_t index, char *type_text, int first) {
     && value_json(o, d->type, v) && put_text(o, "}");
 }
 
+/* The world writer (S5 K6). The state keys of each Instance 0-cell are in
+   the order of PLAN section 4. A key writes its value as a state value, as
+   an attributes object, or as a List of records (Prod chains). */
+typedef enum { STATE_PLAIN, STATE_ATTRS, STATE_RECORDS } StateForm;
+
+typedef struct {
+  const char *key;
+  StateForm form;
+  const char *const *sub; /* STATE_RECORDS: the record keys */
+  uint32_t sub_count;
+} StateKey;
+
+typedef struct {
+  const char *cell; /* the Instance 0-cell */
+  const char *class_name;
+  const StateKey *keys;
+  uint32_t key_count;
+} StateClass;
+
+static const char *const ENTRY_KEYS[] = {"kind", "amount", "balance"};
+static const char *const LISTING_KEYS[] = {"name", "price", "description", "item"};
+static const StateKey AVATAR_KEYS[] = {
+  {"name", STATE_PLAIN, NULL, 0u}, {"role", STATE_PLAIN, NULL, 0u}, {"virtucard", STATE_PLAIN, NULL, 0u},
+  {"attributes", STATE_ATTRS, NULL, 0u}, {"inventory", STATE_PLAIN, NULL, 0u}};
+static const StateKey CARD_KEYS[] = {
+  {"owner", STATE_PLAIN, NULL, 0u}, {"balance", STATE_PLAIN, NULL, 0u}, {"security_level", STATE_PLAIN, NULL, 0u},
+  {"history", STATE_RECORDS, ENTRY_KEYS, 3u}};
+static const StateKey TERMINAL_KEYS[] = {
+  {"name", STATE_PLAIN, NULL, 0u}, {"category", STATE_PLAIN, NULL, 0u}, {"listings", STATE_RECORDS, LISTING_KEYS, 4u}};
+static const StateKey ITEM_KEYS[] = {
+  {"name", STATE_PLAIN, NULL, 0u}, {"type", STATE_PLAIN, NULL, 0u}, {"base_value", STATE_PLAIN, NULL, 0u},
+  {"rarity", STATE_PLAIN, NULL, 0u}, {"attributes", STATE_ATTRS, NULL, 0u}};
+static const StateClass STATE_CLASSES[] = {
+  {"avatarI", "Avatar", AVATAR_KEYS, 5u}, {"cardI", "VirtuCard", CARD_KEYS, 4u},
+  {"terminalI", "VirtualTerminal", TERMINAL_KEYS, 3u}, {"itemI", "VirtualItem", ITEM_KEYS, 5u}};
+
+/* An enumeration value is its 0-cell name (open point 4). A JSON name that
+   is not a guest name comes from this table. */
+static const char *const ENUM_NAMES[][2] = {{"transferOut", "transfer-out"}, {"transferIn", "transfer-in"},
+                                             {"debited", "debit"},          {"credited", "credit"},
+                                             {"purchased", "purchase"}};
+
+static const char *enum_name(const char *name) {
+  size_t i;
+  for (i = 0; i < sizeof ENUM_NAMES / sizeof ENUM_NAMES[0]; i++)
+    if (strcmp(ENUM_NAMES[i][0], name) == 0)
+      return ENUM_NAMES[i][1];
+  return name;
+}
+
+/* The CtorInfo of V when V is a 0-cell of the cell TYPE, else NULL. */
+static const CtorInfo *cell_ctor(const Machine *m, const Value *type, const Value *v) {
+  const FamilyInfo *f;
+  const CtorInfo *ci;
+  if (!val_is(type, OP_FAMILY) || type->inst >= m->family_count || !val_is(v, OP_CTOR) || v->inst >= m->ctor_count)
+    return NULL;
+  f = &m->families[type->inst];
+  ci = &m->ctors[v->inst];
+  return f->cell && ci->family == type->inst && v->argc == f->param_count + ci->field_count ? ci : NULL;
+}
+
+/* A reference (K2): a 0-cell with one Nat field of a cell at Empty. */
+static int is_ref(Out *o, const CtorInfo *ci, const Value *type) {
+  const Value *ft;
+  if (ci == NULL || ci->field_count != 1u || type->argc != 1u || !val_is(type->args[0], OP_EMPTY))
+    return 0;
+  ft = eval_core(o->m, env_push(o->m, NULL, type->args[0]), ci->fields[0].type);
+  return val_is(ft, OP_NAT);
+}
+
+/* A Nat as a JSON number (the digits stay). */
+static int put_nat(Out *o, const Value *v) {
+  char num[24];
+  if (v->kind == VAL_BIG)
+    return put_big(o, v);
+  if (v->kind != VAL_NAT)
+    return internal(o, "a reference id that is not a number");
+  snprintf(num, sizeof num, "%llu", (unsigned long long)v->nat);
+  return put_text(o, num);
+}
+
+static int state_json(Out *o, const Value *type, const Value *v);
+
+/* A Prod chain as an object with the COUNT keys KEYS (Entry, Listing): the
+   last key takes the last second. */
+static int record_json(Out *o, const Value *type, const Value *v, const char *const *keys, uint32_t count) {
+  uint32_t i;
+  int ok = put_text(o, "{");
+  for (i = 0; ok && i + 1u < count; i++) {
+    ok = ready(o, v) && (val_is(type, OP_PROD) && val_is(v, OP_PAIR) ? 1 : internal(o, "a record that is not a Prod chain"))
+      && (i == 0u || put_text(o, ",")) && put_string(o, keys[i]) && put_text(o, ":")
+      && state_json(o, type->args[0], v->args[0]);
+    type = ok ? type->args[1] : type;
+    v = ok ? v->args[1] : v;
+  }
+  return ok && (count < 2u || put_text(o, ",")) && put_string(o, keys[count - 1u]) && put_text(o, ":")
+    && state_json(o, type, v) && put_text(o, "}");
+}
+
+/* A List of state values or, with K, of records, as an array. */
+static int list_state(Out *o, const Value *elem, const Value *v, const StateKey *k) {
+  const Value *cell = v;
+  int first = 1;
+  int ok = put_text(o, "[");
+  while (ok && val_is(cell, OP_CONS)) {
+    ok = (first || put_text(o, ","))
+      && (k != NULL ? record_json(o, elem, cell->args[0], k->sub, k->sub_count) : state_json(o, elem, cell->args[0]))
+      && ready(o, cell->args[1]);
+    cell = cell->args[1];
+    first = 0;
+  }
+  if (!ok)
+    return 0;
+  return val_is(cell, OP_NIL) ? put_text(o, "]") : internal(o, "a List value that is not nil or cons");
+}
+
+/* attributes (K6): a List of Text pairs as an object in List order. The
+   library keeps a key at the place where it was first set. */
+static int attrs_json(Out *o, const Value *type, const Value *v) {
+  const Value *pt = val_is(type, OP_LIST) ? type->args[0] : NULL;
+  const Value *cell = v;
+  int first = 1;
+  int ok = val_is(pt, OP_PROD) && val_is(pt->args[0], OP_TEXT) ? put_text(o, "{")
+    : internal(o, "attributes that are not a List of Text pairs");
+  while (ok && val_is(cell, OP_CONS)) {
+    const Value *p = cell->args[0];
+    ok = ready(o, p) && (val_is(p, OP_PAIR) ? 1 : internal(o, "an attribute that is not a pair"))
+      && (first || put_text(o, ",")) && value_json(o, pt->args[0], p->args[0]) && put_text(o, ":")
+      && state_json(o, pt->args[1], p->args[1]) && ready(o, cell->args[1]);
+    cell = cell->args[1];
+    first = 0;
+  }
+  if (!ok)
+    return 0;
+  return val_is(cell, OP_NIL) ? put_text(o, "}") : internal(o, "a List value that is not nil or cons");
+}
+
+/* A state value (K6): an enumeration is its name, a reference its id, an
+   Option its value or null, a List an array. Another value has the S1 to S4
+   form. */
+static int state_json(Out *o, const Value *type, const Value *v) {
+  const CtorInfo *ci;
+  if (!ready(o, v))
+    return 0;
+  ci = cell_ctor(o->m, type, v);
+  if (ci != NULL && ci->field_count == 0u)
+    return put_string(o, enum_name(ci->name));
+  if (is_ref(o, ci, type))
+    return ready(o, v->args[1]) && put_nat(o, v->args[1]);
+  if (val_is(type, OP_OPTION) && !val_is(type->args[0], OP_OPTION) && val_is(v, OP_SOME))
+    return state_json(o, type->args[0], v->args[0]);
+  if (val_is(type, OP_LIST))
+    return list_state(o, type->args[0], v, NULL);
+  return value_json(o, type, v);
+}
+
+static int key_json(Out *o, const StateKey *k, const Value *type, const Value *v) {
+  switch (k->form) {
+  case STATE_PLAIN:
+    return state_json(o, type, v);
+  case STATE_ATTRS:
+    return ready(o, v) && attrs_json(o, type, v);
+  case STATE_RECORDS:
+    return ready(o, v) && (val_is(type, OP_LIST) ? list_state(o, type->args[0], v, k) : internal(o, "records that are not a List"));
+  }
+  return internal(o, "an unknown state form");
+}
+
+/* One element of the world (K4): an Instance 0-cell, with its class and
+   its state keys. A field type is in the context of the cell parameters
+   and the earlier fields, as in family_json. */
+static int world_item_json(Out *o, const Value *v, uint32_t id) {
+  const StateClass *sc = NULL;
+  const CtorInfo *ci;
+  const FamilyInfo *f;
+  const Env *env = NULL;
+  char num[16];
+  size_t c;
+  uint32_t i;
+  int ok;
+  if (!ready(o, v))
+    return 0;
+  ci = val_is(v, OP_CTOR) && v->inst < o->m->ctor_count ? &o->m->ctors[v->inst] : NULL;
+  for (c = 0; ci != NULL && c < sizeof STATE_CLASSES / sizeof STATE_CLASSES[0]; c++)
+    sc = strcmp(STATE_CLASSES[c].cell, ci->name) == 0 ? &STATE_CLASSES[c] : sc;
+  f = ci != NULL && ci->family < o->m->family_count ? &o->m->families[ci->family] : NULL;
+  if (sc == NULL || f == NULL || sc->key_count != ci->field_count || v->argc != f->param_count + ci->field_count)
+    return internal(o, "a world element that is not an Instance 0-cell");
+  for (i = 0; i < f->param_count; i++)
+    env = env_push(o->m, env, v->args[i]);
+  snprintf(num, sizeof num, "%lu", (unsigned long)id);
+  ok = (id == 0u || put_text(o, ",")) && put_text(o, "{\"id\":") && put_text(o, num) && put_text(o, ",\"class\":")
+    && put_string(o, sc->class_name) && put_text(o, ",\"state\":{");
+  for (i = 0; ok && i < ci->field_count; i++) {
+    const Value *ft = eval_core(o->m, env, ci->fields[i].type);
+    ok = ft != NULL && (i == 0u || put_text(o, ",")) && put_string(o, sc->keys[i].key) && put_text(o, ":")
+      && key_json(o, &sc->keys[i], ft, v->args[f->param_count + i]);
+    env = ok ? env_push(o->m, env, v->args[f->param_count + i]) : env;
+    ok = ok && env != NULL;
+  }
+  return ok && put_text(o, "}}");
+}
+
+/* 1 when T is Virt Unit (K5). */
+static int is_virt_unit(const Machine *m, const Value *t) {
+  return val_is(t, OP_FAMILY) && t->inst < m->family_count && m->families[t->inst].cell
+    && strcmp(m->families[t->inst].name, "Virt") == 0 && t->argc == 1u && val_is(t->args[0], OP_UNIT);
+}
+
+/* The index of the program def (PROGRAM 1) or library def (0) NAME, or
+   def_count. */
+static uint32_t def_index(const Machine *m, const char *name, int program) {
+  uint32_t i;
+  for (i = 0; i < m->def_count; i++)
+    if (strcmp(m->defs[i].name, name) == 0 && (m->defs[i].origin == ORIGIN_PROGRAM) == program)
+      return i;
+  return m->def_count;
+}
+
+/* K5: run Unit main nil, from the empty world. The result is a pair of the
+   final world and unit. The world is a List of Instance values in run
+   order, and the id of an instance is its place. */
+static int world_json(Out *o, uint32_t main_index, char *type_text) {
+  Machine *m = o->m;
+  const DefInfo *d = &m->defs[main_index];
+  uint32_t run_index = def_index(m, "run", 0);
+  const Value *r;
+  const Value *cell;
+  uint32_t id = 0;
+  int ok;
+  o->def = d->name;
+  if (!is_virt_unit(m, d->type)) {
+    if (!value_print(m, NULL, 0, d->type, type_text, JSON_TYPE_MAX))
+      return diag_fail(m->diag, "JSON_TYPE", d->name, "the main type cannot be printed as source syntax");
+    return diag_fail(m->diag, "JSON_MAIN_TYPE", d->name, "main has the type %s, not Virt Unit", type_text);
+  }
+  if (run_index == m->def_count)
+    return diag_fail(m->diag, "JSON_MAIN_RUN", d->name, "the library has no def run for main");
+  m->def = d->name;
+  m->fuel = EVAL_FUEL_STEPS;
+  m->depth = 0;
+  r = def_value(m, run_index);
+  r = apply_value(m, r, val_make(m, OP_UNIT, 0, 0, NULL, NULL, NULL));
+  r = apply_value(m, r, def_value(m, main_index));
+  r = apply_value(m, r, val_make(m, OP_NIL, 0, 0, NULL, NULL, NULL));
+  if (r == NULL)
+    return m->diag->set ? 0 : internal(o, "a run with no value");
+  ok = ready(o, r) && (val_is(r, OP_PAIR) ? 1 : internal(o, "a run result that is not a pair"));
+  cell = ok ? r->args[0] : NULL;
+  ok = ok && ready(o, cell) && put_text(o, "{") && put_string(o, LANG_NAME) && put_text(o, ":1,\"instances\":[");
+  while (ok && val_is(cell, OP_CONS)) {
+    ok = world_item_json(o, cell->args[0], id) && ready(o, cell->args[1]);
+    cell = cell->args[1];
+    id++;
+  }
+  return ok && (val_is(cell, OP_NIL) ? 1 : internal(o, "a world that is not nil or cons")) && put_text(o, "]}\n");
+}
+
 int json_document(Machine *m, const char **text, size_t *len) {
   Out o;
   char *type_text = arena_alloc(m->arena, JSON_TYPE_MAX);
+  uint32_t main_index = def_index(m, "main", 1);
   uint32_t i;
   int first = 1;
   int ok;
@@ -761,14 +1031,20 @@ int json_document(Machine *m, const char **text, size_t *len) {
   o.m = m;
   if (type_text == NULL)
     return diag_fail(m->diag, "OOM", NULL, "the arena limit is reached");
-  ok = put_text(&o, "{") && put_string(&o, LANG_NAME) && put_text(&o, ":1,\"instances\":[");
-  for (i = 0; ok && i < m->def_count; i++) {
-    if (is_instance(m, &m->defs[i])) {
-      ok = instance_json(&o, i, type_text, first);
-      first = 0;
+  /* A program with def main writes the world (K5); else the S1 to S4 form. */
+  if (main_index < m->def_count)
+    ok = world_json(&o, main_index, type_text);
+  else {
+    ok = put_text(&o, "{") && put_string(&o, LANG_NAME) && put_text(&o, ":1,\"instances\":[");
+    for (i = 0; ok && i < m->def_count; i++) {
+      if (is_instance(m, &m->defs[i])) {
+        ok = instance_json(&o, i, type_text, first);
+        first = 0;
+      }
     }
+    ok = ok && put_text(&o, "]}\n");
   }
-  if (!ok || !put_text(&o, "]}\n"))
+  if (!ok)
     return 0;
   *text = o.data;
   *len = o.len;

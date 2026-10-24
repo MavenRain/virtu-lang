@@ -39,6 +39,7 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_EOF: return "end of input";
     case TOK_IDENT: return "a name";
     case TOK_NAT: return "a Nat literal";
+    case TOK_STR: return "a string literal";
     case TOK_LPAREN: return "'('";
     case TOK_RPAREN: return "')'";
     case TOK_COLON: return "':'";
@@ -102,6 +103,8 @@ static Token *push(Lexer *lx, TokKind kind, size_t start, int line, int col) {
   tok->text = lx->text + start;
   tok->len = lx->pos - start;
   tok->nat = 0;
+  tok->str = NULL;
+  tok->str_len = 0;
   tok->line = line;
   tok->col = col;
   return tok;
@@ -156,6 +159,116 @@ static int lex_nat(Lexer *lx) {
     return diag_fail(lx->diag, "LEX_CHAR", NULL, "%s:%d:%d: a letter follows a Nat literal", lx->source, lx->line, lx->col);
   }
   push(lx, TOK_NAT, start, line, col)->nat = overflow ? UINT64_MAX : value;
+  return 1;
+}
+
+/* The byte that the escape `\E` stands for, or -1 for an unknown escape.
+   `\x` is the hex escape; hex_byte reads its two digits. */
+static int escape_byte(char e) {
+  switch (e) {
+    case '"': return '"';
+    case '\\': return '\\';
+    case 'n': return '\n';
+    case 't': return '\t';
+    default: return -1;
+  }
+}
+
+/* The value of a hex digit, or -1. */
+static int hex_digit(char h) {
+  return h >= '0' && h <= '9' ? h - '0' : h >= 'a' && h <= 'f' ? h - 'a' + 10 : h >= 'A' && h <= 'F' ? h - 'A' + 10 : -1;
+}
+
+/* The byte of the escape `\xHH` whose x is TEXT[0], or -1 when fewer than
+   two hex digits follow it. AVAIL is the byte count from TEXT. */
+static int hex_byte(const char *text, size_t avail) {
+  int hi = avail >= 3u ? hex_digit(text[1]) : -1;
+  int lo = avail >= 3u ? hex_digit(text[2]) : -1;
+  return hi < 0 || lo < 0 ? -1 : hi * 16 + lo;
+}
+
+/* The width of the escape at TEXT (TEXT[0] is the backslash), 0 for an
+   unknown one. */
+static size_t escape_width(const char *text, size_t avail) {
+  if (avail < 2u)
+    return 0;
+  if (text[1] == 'x')
+    return hex_byte(text + 1, avail - 1u) < 0 ? 0 : 4;
+  return escape_byte(text[1]) < 0 ? 0 : 2;
+}
+
+/* UTF-8 scalar values only: no overlong forms, surrogates or code points
+   above U+10FFFF. Escapes and raw source bytes obey the same rule. */
+static int valid_utf8(const char *bytes, size_t len) {
+  size_t i = 0;
+  while (i < len) {
+    unsigned char lead = (unsigned char)bytes[i];
+    size_t width, j;
+    if (lead < 0x80u) {
+      i++;
+      continue;
+    }
+    width = lead >= 0xc2u && lead <= 0xdfu ? 2u
+      : lead >= 0xe0u && lead <= 0xefu ? 3u : lead >= 0xf0u && lead <= 0xf4u ? 4u : 0u;
+    if (width == 0u || width > len - i)
+      return 0;
+    for (j = 1; j < width; j++)
+      if ((unsigned char)bytes[i + j] < 0x80u || (unsigned char)bytes[i + j] > 0xbfu)
+        return 0;
+    if ((lead == 0xe0u && (unsigned char)bytes[i + 1u] < 0xa0u)
+        || (lead == 0xedu && (unsigned char)bytes[i + 1u] > 0x9fu)
+        || (lead == 0xf0u && (unsigned char)bytes[i + 1u] < 0x90u)
+        || (lead == 0xf4u && (unsigned char)bytes[i + 1u] > 0x8fu))
+      return 0;
+    i += width;
+  }
+  return 1;
+}
+
+/* A string literal (S5, from the agent-lang lexer). Double quotes only: a
+   single quote stays LEX_CHAR. The escapes are \" \\ \n \t and \xHH
+   (exactly two hex digits, one byte); the decoded bytes must be UTF-8.
+   A raw newline or other control byte is refused. The first pass
+   checks the literal and counts its bytes; the second copies them into the
+   arena. */
+static int lex_str(Lexer *lx) {
+  size_t start = lx->pos;
+  int line = lx->line;
+  int col = lx->col;
+  size_t count = 0;
+  advance(lx, 1);
+  while (lx->pos < lx->len && peek(lx, 0) != '"') {
+    unsigned char c = (unsigned char)peek(lx, 0);
+    size_t width = c == '\\' ? escape_width(lx->text + lx->pos, lx->len - lx->pos) : 1u;
+    if (c < 0x20u || c == 0x7fu) {
+      return diag_fail(lx->diag, "LEX_STR_CONTROL", NULL, "%s:%d:%d: a string literal holds the control byte 0x%02x (write \\n for a newline)",
+                       lx->source, lx->line, lx->col, (unsigned)c);
+    }
+    if (width == 0u && lx->pos + 1 < lx->len) {
+      return diag_fail(lx->diag, "LEX_STR_ESCAPE", NULL, "%s:%d:%d: an unknown escape in a string literal (the escapes are \\\" \\\\ \\n \\t \\xHH)",
+                       lx->source, lx->line, lx->col);
+    }
+    advance(lx, width == 0u ? 2u : width);
+    count++;
+  }
+  if (lx->pos >= lx->len) {
+    return diag_fail(lx->diag, "LEX_STR_OPEN", NULL, "%s:%d:%d: a string literal has no closing quote", lx->source, line, col);
+  }
+  advance(lx, 1);
+  char *bytes = arena_alloc(lx->arena, count + 1);
+  if (bytes == NULL) return diag_fail(lx->diag, "OOM", NULL, "%s: no memory for a string literal", lx->source);
+  size_t at = start + 1;
+  for (size_t i = 0; i < count; i++) {
+    size_t width = lx->text[at] == '\\' ? escape_width(lx->text + at, lx->len - at) : 1u;
+    bytes[i] = width == 4u ? (char)hex_byte(lx->text + at + 1, 3) : width == 2u ? (char)escape_byte(lx->text[at + 1]) : lx->text[at];
+    at += width;
+  }
+  bytes[count] = '\0';
+  if (!valid_utf8(bytes, count))
+    return diag_fail(lx->diag, "LEX_STR_UTF8", NULL, "%s:%d:%d: a string literal is not valid UTF-8", lx->source, line, col);
+  Token *tok = push(lx, TOK_STR, start, line, col);
+  tok->str = bytes;
+  tok->str_len = count;
   return 1;
 }
 
@@ -220,7 +333,7 @@ static int lex_source_impl(Arena *arena, const char *source, const char *text, s
     skip_trivia(&lx);
     if (lx.pos >= lx.len) break;
     char c = peek(&lx, 0);
-    int ok = is_ident_start(c) ? lex_ident(&lx) : is_digit(c) ? lex_nat(&lx) : lex_symbol(&lx);
+    int ok = is_ident_start(c) ? lex_ident(&lx) : is_digit(c) ? lex_nat(&lx) : c == '"' ? lex_str(&lx) : lex_symbol(&lx);
     if (!ok) return 0;
   }
   push(&lx, TOK_EOF, lx.pos, lx.line, lx.col);

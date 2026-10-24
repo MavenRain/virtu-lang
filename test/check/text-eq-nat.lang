@@ -1,0 +1,2 @@
+-- textEq takes two Text arguments.
+def mixed : Option Unit := textEq "a" 1

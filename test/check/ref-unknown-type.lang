@@ -1,0 +1,2 @@
+-- refUnknown takes a type of Type 0.
+def bad : Nat := refUnknown 3 7

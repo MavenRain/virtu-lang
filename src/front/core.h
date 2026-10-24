@@ -75,7 +75,11 @@ typedef enum {
   OP_ELIM,     /* elim: field = family + 1, then the motive, one case per constructor, the value */
   OP_ABSURD,   /* absurd A e: e : Empty; always stuck, because Empty has no closed value */
   OP_COUNFOLD,     /* unfold g s at a cofamily (S4): inst the cofamily; a canonical value */
-  OP_OUT           /* out x: inst the cofamily; one layer of x (S4) */
+  OP_OUT,          /* out x: inst the cofamily; one layer of x (S4) */
+  OP_TEXT,         /* Text : Type 0: a byte string; a value is a VAL_TEXT literal (S5) */
+  OP_TEXT_EQ,      /* textEq a b: some of the unit value when the bytes agree, else none (S5) */
+  OP_CREDITS_CHECK, /* creditsCheck n: n when n is below 2^64, else EVAL_CREDITS_OVERFLOW (S5) */
+  OP_REF_UNKNOWN   /* refUnknown A id: EVAL_REF_UNKNOWN at a literal id (S5) */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -107,7 +111,8 @@ typedef enum {
   CORE_IONE,   /* i1 */
   CORE_INEG,   /* ~a */
   CORE_IMEET,  /* a /\ b */
-  CORE_IJOIN   /* a \/ b */
+  CORE_IJOIN,  /* a \/ b */
+  CORE_TEXT    /* name: the bytes, nat: their length (S5) */
 } CoreKind;
 
 typedef struct Core Core;
@@ -120,7 +125,7 @@ struct Core {
      constructor. OP_PURE, OP_MAP, OP_BIND, OP_FILTER: the Carrier. */
   uint32_t inst;
   uint32_t field; /* OP_PROJ: the field number */
-  const char *name; /* a binder (lam, Pi, Sigma, path lam): the name to print */
+  const char *name; /* a binder (lam, Pi, Sigma, path lam): the name to print. CORE_TEXT: the bytes */
   const uint32_t *limbs; /* CORE_BIG: the little-endian limbs, nat of them */
   const Core *a; /* OP_FIN_CASE, OP_COUNFOLD: result type for source printing */
   const Core *b; /* OP_COUNFOLD: seed type for source printing */
@@ -143,7 +148,8 @@ typedef enum {
   VAL_PATHP, /* a path type: the line is the closure, args[0..1] the ends */
   VAL_IVAL,  /* an interval term in normal form */
   VAL_PAPP,  /* neutral: a neutral path at an interval value */
-  VAL_BIG    /* a Nat at or above 2^64: limbs, nat of them (S3) */
+  VAL_BIG,   /* a Nat at or above 2^64: limbs, nat of them (S3) */
+  VAL_TEXT   /* a Text literal: name the bytes, nat their length (S5) */
 } ValKind;
 
 /* An interval literal is level * 2 + 1 for a negated variable, else
@@ -219,13 +225,13 @@ struct Env {
 
 struct Value {
   ValKind kind;
-  uint64_t nat; /* NAT: the number. UNIV: the level. VAR: the level. BIG: the limb count. */
+  uint64_t nat; /* NAT: the number. UNIV: the level. VAR: the level. BIG: the limb count. TEXT: the length. */
   Op op;        /* OP, STUCK */
   uint32_t inst;
   uint32_t field;
   const Value *const *args;
   uint32_t argc;
-  const char *name; /* LAM, PI, SIGMA: the binder. */
+  const char *name; /* LAM, PI, SIGMA: the binder. TEXT: the bytes. */
   const uint32_t *limbs; /* BIG: the little-endian limbs, nat of them */
   const Value *dom; /* PI, SIGMA: domain. APP, PAPP: function. FIN_CASE, COUNFOLD: result type. */
   const Value *arg; /* APP, PAPP: argument. PI with no body: codomain. COUNFOLD: seed type. */
@@ -348,6 +354,7 @@ typedef struct GlueRec {
 const Value *val_nat(Machine *m, uint64_t n);
 /* S3 literals: a Text of LEN bytes, an Int64, a big Nat of COUNT limbs. */
 const Value *val_big(Machine *m, const uint32_t *limbs, uint64_t count);
+const Value *val_text(Machine *m, const char *bytes, uint64_t len);
 const Value *val_var(Machine *m, uint32_t level);
 /* The interval variable at LEVEL. */
 const Value *val_ivar(Machine *m, uint32_t level);

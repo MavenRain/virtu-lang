@@ -1,0 +1,2 @@
+-- An unknown escape in a string literal.
+def odd : Text := "a\qb"

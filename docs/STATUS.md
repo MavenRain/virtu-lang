@@ -461,3 +461,137 @@ The runner ~/Documents/virtu-lang-work/S4-mutants.zsh (outside the repo) has the
 
 - Q1 (open point 1): the conversion is not transitive on unfolds. Accept this incompleteness, or add a rule (for example the all-pairs hypothesis of Q2)?
 - Q2 (open point 7): add an all-pairs hypothesis (fresh x and y, independent) to K5 (a)?
+
+## S5
+
+S5 adds the base span: the carriers `Text` and `Credits`, the four classes as reference cells, the program monad `Virt` with 28 0-cells, the world `W`, the runner `run` and the JSON output of the world. The kickoff proposals K1 to K14 are all (a) (docs/PLAN.md, `### USER ruling (S5 kickoff)`). The claims C18 to C21 are in ~/Documents/virtu-lang-work/S5-claims.md and the build records are in ~/Documents/virtu-lang-work/s5-build/ (outside the repo).
+
+### Gate
+
+The gate runner ~/Documents/virtu-lang-work/s5-build/b-gate.zsh exits 0 (log s5-build/b-gate.log). The S4 pin is 6c0c0ed: the revised S4 gate of [Staged review corrections](#staged-review-corrections).
+
+| gate line | S4 (pin) | K11 | S5 | difference and cause |
+|---|---|---|---|---|
+| examples | 37 | 39 | 39 | +2: examples/virt.lang, examples/carriers.lang |
+| parse refusals | 16 | 16 | 16 | +1: test/parse/string-unterminated.lang; -1: test/parse/text-literal.lang (a string in double quotes is now a token, K1) |
+| check refusals | 117 | about 124 | 125 | +9: 9 files in test/check (Added tests); -1: test/check/text-removed.lang (`Text` is back, K1) |
+| evals | 159 | about 185 | 210 | +51: 33 rows for examples/virt.lang, 18 rows for examples/carriers.lang |
+| build | 37 | 38 | 39 | +2: test/json/virt.json, test/json/carriers.json |
+| build refusals | 5 | 7 | 7 | +2: test/emit/credits-overflow.lang, test/emit/unknown-id.lang |
+| regressions | 6 | 6 | 6 | none |
+| printer regressions | 2 | 2 | 2 | none |
+| path regressions | 193 | about 203 | 220 | +27 rows (Added tests) |
+
+Four lines differ from K11 (D1).
+
+### K rows
+
+- K1: `Text` is a kernel builtin again, with string literals in double quotes (src/front/lexer.c) and `textEq : Text -> Text -> Option Unit` (src/front/check.c:179). domain/domain.lang gives `Role := Text`, `Value := Text` and `Credits := Nat` with `creditsAdd`, `creditsSub` (to `Option`), `creditsMul` and `creditsLe` (domain.lang:198 to 206). `creditsAdd` and `creditsMul` call the builtin `creditsCheck` (check.c:178), which gives EVAL_CREDITS_OVERFLOW at a value above 2^64 - 1 (src/front/eval.c:3146). `Entry` and `Listing` are `Prod` chains (domain.lang:261 and 262). The kernel fixtures that are not cell monads, duals or carriers are in domain/fixtures.lang, which only the gate loads ([Gate build](#gate-build)).
+- K2: the reference cells `AvatarC`, `VirtuCardC`, `VirtualTerminalC` and `VirtualItemC`, each with one 0-cell `Nat -> X`, and `Avatar := AvatarC Empty` and the same for the other three (domain.lang:209 to 216). `refUnknown : (A : Type 0) -> Nat -> A` (check.c:181) gives EVAL_REF_UNKNOWN for an id with no instance (eval.c:3165).
+- K3: `cell Virt (X : Type 0)` (domain.lang:355) has 28 0-cells (27 rows; row 4 gives `avatarCard` and `attachCard`). The op fields have no names.
+- K4: `W := List Instance` (domain.lang:268). `InstanceC` has `avatarI`, `cardI`, `terminalI` and `itemI`, each with the state record of PLAN 4 (domain.lang:263 to 267).
+- K5: `run : (X : Type 0) -> Virt X -> W -> Prod W X` (domain.lang:385) is a library fold with one case for each 0-cell. `langc build` finds `def main : Virt Unit` (src/json.c:1026), runs it from the empty world and writes the final world.
+- K6: src/json.c writes `{"virtu-lang":1,"instances":[...]}` with the keys `id`, `class` and `state` (open point 8). A program with no `main` keeps the S1 to S4 form.
+- K7: `SecurityLevelC` (4), `RarityC` (5) and `EntryKindC` (7) are cells with nullary 0-cells at `Empty` (domain.lang:225 to 227), each with a path to `Fin k` by `ua` and `isoToEquiv`. `multiplier : Rarity -> Credits` is a fold (domain.lang:256).
+- K8: [K8, K13 and K14 notes](#k8-k13-and-k14-notes).
+- K9: the added tests below. There is no new node, Python or shell harness.
+- K10: [Mutants (K10)](#mutants-k10-1): 17 of 18 KILLED; U2 is an equivalent mutant (open point 9).
+- K11: the gate above.
+- K12: the PLAN edits: 2.5 (Plotkin and Pretnar for the runner, the qualified Katsumata, Rivas and Uustalu cite, the Jacobs details), 2.5 and 5.1 ("28 0-cells (27 rows)"), 6 (the RFC 8259 notes). The S4 kickoff ruling and the S4 staged review correction stay.
+- K13, K14: [K8, K13 and K14 notes](#k8-k13-and-k14-notes).
+
+### Claims (S5-claims.md)
+
+- C18: the runner as a monad and comonad interaction law (Katsumata, Rivas and Uustalu, LICS 2020). PARTIAL. The abstract gives stateful runners; the State/Store interaction law is not checked. PLAN 2.5 keeps the cite with this qualifier (K12). The runner does not depend on the claim: it is a fold (C20).
+- C19: an instance is a coalgebra of its class (Jacobs, 1996). CONFIRMED (abstract). A reference type plus a state in the world is the identifier and local state form of the source. S5 does not build the creation by the terminal coalgebra (the world is a list, K4).
+- C20: the runner as a handler (Plotkin and Pretnar, LMCS 2013). CONFIRMED (abstract), with a uniqueness note. `run` is the fold of the free `Virt` algebra into the model `W -> Prod W X`. The beta equations give the homomorphism; its uniqueness needs an eta equation (Ahman, arXiv 1710.02594).
+- C21: the JSON output of PLAN 6 (RFC 8259). CONFIRMED. A `Credits` value up to 2^64 - 1 is a valid JSON number, but a number above 2^53 - 1 is not interoperable. The member order of `attributes` is in the text only; a parser can drop it.
+
+### Kernel changes
+
+- src/front/lexer.c, lexer.h: the string token in double quotes, the escapes, and the codes LEX_STR_OPEN, LEX_STR_ESCAPE and LEX_STR_CONTROL (open point 7).
+- src/front/ast.h, parser.c: the string literal term.
+- src/front/core.h: the ops OP_TEXT, OP_TEXT_EQ, OP_CREDITS_CHECK and OP_REF_UNKNOWN.
+- src/front/check.c: the BUILTINS rows `creditsCheck`, `textEq` and `refUnknown` (check.c:178 to 181); check.c:2441 knows the two new EVAL codes (a conversion that evaluates a closed term can give them, open point 1).
+- src/front/eval.c: Text values and `textEq`, `creditsCheck` and `refUnknown` with their codes.
+- src/json.c: the world writer (K6): the `main` lookup, the run from the empty world, the state keys, the enumeration names (ENUM_NAMES, json.c:803) and the JSON escapes of a Text value.
+- gen/embed.c: `embed IN... OUT` writes the files in order, with a newline between two files. One IN gives the same bytes as before.
+- Makefile: GATE_DOMAIN, build/domain-gate.c and build/langc-gate. build/path-regressions links build/domain-gate.c. `check` also builds build/langc-gate.
+- test/gate.sh: `langc_for FILE`. test/regressions.js: gateCompiler for the Vec rows of the test "printed types preserve binding under normalization".
+- domain/domain.lang: the S5 library (K1 to K7). domain/fixtures.lang: the 22 moved fixtures.
+- examples/mealy.lang, state.lang and state-free.lang: the program def `run` is now `runMealy` or `runState`, because the library `run` (K5) is a core name (rule R4).
+
+### Gate build
+
+build/langc embeds domain/domain.lang only. build/langc-gate embeds domain/domain.lang and then domain/fixtures.lang (GATE_DOMAIN in the Makefile). domain/fixtures.lang holds the 22 kernel fixtures that are not cell monads, duals or carriers (K1): S1, Trunc1, Trunc0, Quot, Vec, Charter (with Ratified), StreamF, Stream, ColistF, Colist, MealyF, Mealy, transport, subst, J, JRefl, trans, uaArrow, finSub, isSetFin, decEqProd and decEqSigmaFin. The other definitions stay in domain.lang because a kept definition needs them (for example `finPath` needs `ua`, and `isSetNat` is used by examples/state.lang).
+
+test/gate.sh checks, evaluates and builds each file of test/gate-domain.txt with build/langc-gate, and each other file with build/langc. test/gate-domain.txt has 44 files: 21 examples, 22 files in test/check and 1 in test/emit. A new test file that uses a fixture goes in test/gate-domain.txt (the exact path). build/path-regressions loads the gate domain.
+
+Diagnostics (real runs in a scratch copy): src/front/front.c gives the embedded text the one source name domain/domain.lang. A check diagnostic at a fixture def names the def and gives no source line (`langc: TYPE_MISMATCH: isSetFin: ...`). A lexer diagnostic gives `domain/domain.lang:LINE:COL`, where LINE counts in the joined text: line k of fixtures.lang is line N + 1 + k, with N the line count of domain.lang (line 90 of fixtures.lang gave domain/domain.lang:539 at N = 448) (D2).
+
+### Added tests (K9)
+
+- examples/virt.lang and examples/carriers.lang, with 51 eval rows in test/eval/expect.txt.
+- test/json/virt.json and test/json/carriers.json.
+- test/parse/string-unterminated.lang (LEX_STR_OPEN). test/parse/text-literal.lang is removed.
+- test/check: text-op.lang (NAME_UNKNOWN), ref-class.lang (TYPE_MISMATCH), virt-op-name.lang (REFUSE_NAME), text-eq-nat.lang (TYPE_MISMATCH), string-escape.lang (LEX_STR_ESCAPE), string-control.lang (LEX_STR_CONTROL), credits-overflow.lang (EVAL_CREDITS_OVERFLOW), ref-unknown.lang (EVAL_REF_UNKNOWN), ref-unknown-type.lang (TYPE_MISMATCH). test/check/text-removed.lang is removed. The codes come from real runs.
+- test/emit: credits-overflow.lang (EVAL_CREDITS_OVERFLOW) and unknown-id.lang (EVAL_REF_UNKNOWN).
+- test/path-regressions.c, 27 rows: Text 7 (`textEq` at equal bytes, at unequal bytes and at a variable; each lexer escape; an unknown escape; a raw control byte; the JSON escapes of a Text value), Credits 3 (`creditsCheck` keeps 2^64 - 1, refuses 2^64, is stuck at a variable), reference 3 (`refUnknown` refuses a literal id, is stuck at a variable id, takes `A : Type 0` only), world writer 6 (no `main` keeps the S1 to S4 form; `main` at `pure unit`; id, class and state in table order; a `main` of a type that is not `Virt Unit`; an avatar with no card; two avatars, two cards and a transfer), the bound builtin at `langc build` 2, a card reference at an avatar instance 1, the `main` lookup 2 (`main` after another def; a name with the prefix `main`), a string literal to JSON 1, the U6 killer 2 (no eta at a seed type with a different parameter, and the eta at the seed type of the cofamily; open point 9).
+- The "credits:" rows and the "bound builtin:" rows use the same `creditsCheck` terms on two routes: a Path by conversion at `langc check`, and a def body at `langc build` with the JSON number. Both pairs stay.
+
+### Deviations
+
+- D1 (K11): four gate lines differ from K11. Check refusals: 125, not about 124 (K11 counted about 8 new files; S5 adds 9). Evals: 210, not about 185 (K11 counted about 26 new rows; some 0-cells have more than one row, and examples/carriers.lang has 18 rows). Build: 39, not 38 (test/gate.sh builds each example against test/json/NAME.json, thus examples/carriers.lang needs a golden, open point 6). Path regressions: 220, not about 203 (K11 forecast about 10 new rows; S5 adds 27).
+- D2: a lexer diagnostic at a fixture line names domain/domain.lang and a line in the joined text ([Gate build](#gate-build)). S5 does not change front.c.
+
+### Open points (S5-build-PROMPT.md)
+
+1. The codes are EVAL_CREDITS_OVERFLOW and EVAL_REF_UNKNOWN. `refUnknown : (A : Type 0) -> Nat -> A`. `langc check` does not evaluate a def body: a closed def that overflows passes `check`, and `build` refuses it (exit 1, no output). `check` refuses a closed term that overflows when a conversion evaluates it (test/check/credits-overflow.lang, a refl); the same for `refUnknown` (test/check/ref-unknown.lang). `creditsCheck` refuses a value of 2^64 or more, not of 2^53 or more.
+2. The order of the fold cases is the PLAN 5.1 row order, then `pure`: 29 cases. `check` accepts it.
+3. `pure unit` at `Virt Unit` needs no hint, at a def type and in a 0-cell field (path regressions).
+4. An enumeration value (a 0-cell with no field) is its 0-cell name. ENUM_NAMES (json.c:803) maps `transferOut` to "transfer-out" and `transferIn` to "transfer-in".
+5. The load route is build/langc-gate ([Gate build](#gate-build)). 44 files use a fixture (s5-build/b-s8-users.log); the other 18 examples run through build/langc.
+6. json 39: test/gate.sh builds each examples/*.lang, thus examples/carriers.lang needs test/json/carriers.json.
+7. A string literal has the escapes `\"`, `\\`, `\n`, `\t` and `\xHH` (lexer.c:201). The JSON writer gives each escaped byte in the `\u` form (`"`, `\`, `\u000a`, `\u0009`). `langc eval` prints `"a\"b\\c\x0ad\x09eA"`.
+8. The state keys are the keys of PLAN 6. `attributes` is a JSON object in List order. The writer does not merge a key that occurs two times: the library keeps a key at the place of its first set.
+9. U2 and U6 ([Mutants (K10)](#mutants-k10-1)). U2 is an equivalent mutant. At a cofamily type, only an unfold or a neutral gets to the branch: the branch above takes an unfold, and hcomp_stuck and the transp neutral are neutrals. No trap value exists: val_trap (src/front/eval.c:143) is called only at the eval of CORE_TRAP (eval.c:3336), and only the quote of a trap value writes CORE_TRAP (eval.c:3866). conv_values does not use the type, and conv_pathp compares the endpoints before the line (eval.c:3401). Thus a type mismatch can give the branch a value that is not neutral (a Nat, a Text or a constructor). Then the line compare fails, and the two binaries give the same TYPE_MISMATCH. The probes ~/Documents/virtu-lang-work/s5-build/u2/p1.lang to p9.lang give the same output on the main build/langc-gate and on the U2 build. U6 has a killer row. No field type of the cocell `PhK (P : Type 0) (X : Type 0)` uses P, so a step at the seed type `PhK (List Nat) Nat` passes the field check. Without the seed type check, eta contracts the unfold at the type `PhK Nat Nat`, and the refl is accepted, not PATH_END (path regression "bisimulation rule: no eta at a seed type with a different parameter").
+
+### Mutants (K10)
+
+The runner ~/Documents/virtu-lang-work/S5-mutants.zsh (outside the repo) has the form of the S4 runner. Each anchor text must have exactly 1 match in the main checkout. The runner applies each mutant with `sd -F` on a scratch copy (s5-build/mscratch, an rsync of the main checkout with no .git) and runs `make -B -j 2 check`. When the check stops before test/gate.sh or the path regressions, the runner runs them apart. Then it restores the file from the main checkout and compares the two files with cmp. Output: ~/Documents/virtu-lang-work/s5-build/S5-mutants.out; logs: s5-build/mlogs. The base gate on the scratch copy exits 0 (218 path regressions). Each restore is equal. The final gate on the scratch copy exits 0 (0 gate failures, 218 path regressions, 0 failed), so each killer passes before and after. The lines are lines of the S5 work tree. Result: 17 of 18 KILLED; U2 SURVIVED, and it is an equivalent mutant (open point 9). The U6 killer row has its own run (runner s5-build/u6/u6-row.zsh): with U6, 2 of 220 path regressions fail (the fuel row and the U6 row); after the restore (cmp equal), 0 of 220 fail.
+
+| id | site | mutation | killer | result |
+|---|---|---|---|---|
+| U1 | src/front/eval.c:3587 conv_counfold | `ctor_count != 1u)` to `< 1u)` | path 2 of 218: "cofamily: conversion preserves distinct layer constructor tags", "cofamily: a constant constructor step is not eta for a sum" | KILLED |
+| U2 | eval.c:3583 conv_counfold | `} else if (scrut_of(v) != SCRUT_NEUTRAL)` to `} else if (0)` | none: 0 gate failures, path 0; the probes s5-build/u2/p1 to p9 give the same output | SURVIVED: an equivalent mutant (open point 9) |
+| U3 | eval.c:3520 conv_bisim | remove `&& conv_values(m, level, s1.s, s2.s)` | path 5: "unfold: refl of g at 0 and g at 1 after eval" and 4 "bisimulation rule" rows (unequal variable seeds; mirror graph; nonvariable graph pair; closed graph pair) | KILLED |
+| U4 | eval.c:3504 bisim_check | `spend(m, 1) ?` to `1 ?` | path 1: "the bisimulation check spends 1 fuel" (t 12, model 13) | KILLED |
+| U5 | eval.c:3494 bisim_field | the return to `a != NULL && b != NULL` | gate 2: test/check/codata-bisim.lang, cocell-nats-evens.lang (exit 0, not PATH_END); path 1: the fuel row (t 10) | KILLED |
+| U6 | eval.c:3529 counfold_eta | `conv_values(m, level, u->arg, u->dom) &&` to `1 &&` | path 1 in the run: the fuel row (t 11, model 13); after open point 9 also "bisimulation rule: no eta at a seed type with a different parameter" (PATH_END) | KILLED |
+| U7 | eval.c:3589 conv_counfold | `if (finite_layer(...))` to `if (0 && ...)` | gate 16: examples/cocell.lang (PATH_END at envCo) and its eval rows; path 1: "cofamily: finite observations can agree at different seed types" | KILLED |
+| U8 | src/front/check.c:1985 rule_extend | remove `!cocell_result_ok(c, b)` of fv | gate 4: test/check cocell-extend-universe, -pi-, -sigma-, -neutral-universe (exit 0, not TYPE_MISMATCH); path 0 | KILLED |
+| U9 | check.c:1998 cocell_map | remove `!cocell_result_ok(c, b)` of gv | gate 4: the 4 cocell-map-*universe inputs; path 0 | KILLED |
+| U10 | src/front/lexer.c:316 lex_source | `diag, 0);` to `diag, 1);` | gate 1: cocell-internal-name.lang (TYPE_ARITY, not LEX_CHAR); path 0 | KILLED |
+| V1 | eval.c:3144 credits_check (the bound test) | `if (big_fits_u64(b, &x))` to `... \|\| 1)` | gate 2: test/check/credits-overflow.lang (exit 0), build test/emit/credits-overflow.lang; path 2, with "bound builtin: build refuses creditsCheck 2^64" | KILLED |
+| V2 | eval.c:3163 ref_unknown (the reference refusal) | `if (!big_of(...) \|\| !big_text(...))` to `if (1 \|\| ...)` (OOM, not EVAL_REF_UNKNOWN) | gate 2: test/check/ref-unknown.lang, build test/emit/unknown-id.lang; path 2, with "reference refusal: a card reference at an avatar instance" | KILLED |
+| V3 | lexer.c:226 lex_str (the string token) | `if (lx->pos >= lx->len) {` to `if (0 && ...)` (LEX_STR_OPEN off) | gate 1: test/check/string-unterminated.lang (exit 0, not LEX_STR_OPEN); path 0 | KILLED |
+| V4 | src/json.c:54 put_quoted (the `\u` writer) | remove `ch != '"' &&` | gate 1: build examples/carriers.lang differs from test/json/carriers.json; path 2: "Text escapes: a string literal to JSON", "text: the JSON escapes of a Text value" | KILLED |
+| V5 | lexer.c:171 escape_byte (a Text escape) | `case 'n': return '\n';` to `return 'n';` | gate 2: eval carriers escaped, build carriers.lang; path 2: "Text escapes: a string literal to JSON", "text: each lexer escape gives its byte" | KILLED |
+| V6 | json.c:1026 json_document (the `main` lookup) | `def_index(m, "main", 1)` to `(m, "main", 0)` | gate 3 (the build rows of world documents); path 7, with "world writer: main at pure unit gives the empty world" | KILLED |
+| V7 | json.c:810 enum_name (ENUM_NAMES) | `if (strcmp(...) == 0)` to `if (0 && ...)` | gate 1: build examples/virt.lang differs from test/json/virt.json; path 2: "world writer: id, class and state in table order", "world writer: two avatars, two cards and a transfer" | KILLED |
+| V8 | json.c:956 world_item_json (the world writer keys) | `",\"class\":"` to `",\"klass\":"` | gate 1: build examples/virt.lang; path 4: the "world writer" rows (table order; an avatar with no card; two avatars, two cards and a transfer) and "main lookup: main after another def writes the world" | KILLED |
+
+### K8, K13 and K14 notes
+
+- K8 (a): S4 open points 8, 9 and 10 and the S4 review leftovers stay open. The S4 K10 table stays historical: its lines (eval.c:3426, 3458, 3492 and 3460) are lines of the candidate before the review, and at 6c0c0ed they are not the sites. The cites of S5-kickoff.md survey f (lines at 6c0c0ed) have these current lines: `nat_sub` (`x < y ? 0 : x - y`) eval.c:1275 is now eval.c:1288; R6 `bisim_field` is eval.c:3481; R7 the `spend` in `bisim_check` is eval.c:3504; R8 `} else if (scrut_of(v) != SCRUT_NEUTRAL)` in `conv_counfold` is eval.c:3583; R9 the seed check in `conv_bisim` is eval.c:3520; S1 M1 `rule_fin_case` check.c:2696 is now check.c:2727; `is_enum` is json.c:155. gen/embed.c and the Makefile now take more than one domain file ([Gate build](#gate-build)).
+- K13 (a): S5 accepts that conversion is incomplete at full StreamK and CofreeK coassociativity. A stronger path rule needs a source for the cubical model first.
+- K14 (a): Q2 (the all-pairs hypothesis) is dropped. The all-pairs idea is future work that needs a soundness argument first.
+### S5 staged review corrections
+
+Review of all 44 staged paths found three MEDIUM defects. CI and test routing were checked first. The two removed Text refusal fixtures cover syntax and a type that S5 intentionally enables; the remaining kernel fixture tests still run through the gate compiler.
+
+- Text homogeneous composition omitted VAL_TEXT in both the literal head comparison and the data reduction rule. For example, `hcomp Text i0 (fun (i : I) => []) "Ada"` stayed stuck, so JSON refused a closed Text and a reflexivity proof failed. Both rules now handle Text literals, including a constant live face. A negative equality test still rejects different literals.
+- The lexer accepted `"\xff"` and the JSON writer emitted the raw invalid UTF-8 byte. A UTF-8 reader rejected that successful build. Decoded string literals now require valid UTF-8 scalar values, with LEX_STR_UTF8 for malformed bytes, overlong forms, surrogates and out-of-range code points. Valid multibyte text and escaped NUL still serialize correctly.
+- A self transfer, a transfer with insufficient funds, or a purchase with no matching listing could skip checking a supplied reference and return none. For example, a self transfer at card id 0 in the empty world succeeded instead of EVAL_REF_UNKNOWN. cardTransfer and purchaseIn now validate their references before these branches, including the referenced class.
+
+The C runner has 15 added cases: four reference refusals, three Text composition cases, seven malformed UTF-8 refusals, and valid UTF-8 with escaped NUL. The reproduced failures precede the fixes. The corrected runner passes 235 cases. The original S5 gate table and mutant results above remain historical records of the candidate before this review.

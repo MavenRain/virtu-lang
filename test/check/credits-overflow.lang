@@ -1,0 +1,2 @@
+-- A closed term that overflows Credits: the conversion evaluates it.
+def big : Path Credits (creditsCheck 18446744073709551616) 0 := refl

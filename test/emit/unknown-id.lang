@@ -1,0 +1,2 @@
+-- A card id that no instance has: the build refuses.
+def main : Virt Unit := cardBalance Unit (cardRef Empty 9) (fun (b : Credits) => pure unit)

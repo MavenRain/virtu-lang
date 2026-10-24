@@ -1,10 +1,16 @@
 #!/bin/sh
 # The kit gate. `make check` runs it from the kit directory after the build.
 set -eu
+# langc_for FILE: the files in test/gate-domain.txt use a kernel fixture of
+# domain/fixtures.lang, so they run through build/langc-gate (domain.lang, then
+# fixtures.lang). The other files run through build/langc (domain.lang only).
+langc_for() {
+  if rg -q -x -F "$1" test/gate-domain.txt; then echo build/langc-gate; else echo build/langc; fi
+}
 fail=0
 count=0
 for prog in examples/*.lang; do
-  out=$(build/langc check "$prog" 2>&1) || true
+  out=$($(langc_for "$prog") check "$prog" 2>&1) || true
   count=$((count + 1))
   if [ "$out" != "ok" ]; then
     echo "FAIL $prog: $out"
@@ -26,7 +32,7 @@ refusals() {
     path="$1/$file"
     [ "$file" = "deep.lang" ] && path="$tmp/deep.lang"
     status=0
-    build/langc check "$path" 2>"$tmp/err" >/dev/null || status=$?
+    $(langc_for "$path") check "$path" 2>"$tmp/err" >/dev/null || status=$?
     first=$(head -n 1 "$tmp/err")
     checked=$((checked + 1))
     case "$status:$first" in
@@ -40,7 +46,7 @@ refusals test/parse parse
 refusals test/check check
 
 # A refl refusal shows both normal forms.
-build/langc check test/check/bad-refl.lang 2>"$tmp/err" >/dev/null || true
+$(langc_for test/check/bad-refl.lang) check test/check/bad-refl.lang 2>"$tmp/err" >/dev/null || true
 if ! rg -q -F 'the path at i1 is 1201, but the type needs 1200' "$tmp/err"; then
   echo "FAIL bad-refl.lang: the message does not show both normal forms"
   fail=$((fail + 1))
@@ -57,7 +63,7 @@ while IFS= read -r line; do
   name=$2
   shift 2
   status=0
-  got=$(build/langc eval "examples/$file.lang" "$name" "$@" 2>"$tmp/err") || status=$?
+  got=$($(langc_for "examples/$file.lang") eval "examples/$file.lang" "$name" "$@" 2>"$tmp/err") || status=$?
   first=$(head -n 1 "$tmp/err")
   want_err=""
   [ "$want" = "trap" ] && want_err="langc: EVAL_OVERFLOW: $name: "
@@ -76,7 +82,7 @@ eval_refused() {
   code=$2
   shift 2
   status=0
-  build/langc eval examples/entries.lang "$@" 2>"$tmp/err" >/dev/null || status=$?
+  $(langc_for examples/entries.lang) eval examples/entries.lang "$@" 2>"$tmp/err" >/dev/null || status=$?
   case "$status:$(head -n 1 "$tmp/err")" in
     "$want_status:langc: $code: $1: "*) ;;
     *) echo "FAIL eval $*: want exit $want_status and $code, got exit $status"; fail=$((fail + 1)) ;;
@@ -100,7 +106,7 @@ jsons=0
 for prog in examples/*.lang; do
   name=$(basename "$prog" .lang)
   jsons=$((jsons + 1))
-  if ! build/langc build "$prog" >"$tmp/out.json" 2>"$tmp/err" || ! cmp -s "$tmp/out.json" "test/json/$name.json"; then
+  if ! $(langc_for "$prog") build "$prog" >"$tmp/out.json" 2>"$tmp/err" || ! cmp -s "$tmp/out.json" "test/json/$name.json"; then
     echo "FAIL build $prog: the output differs from test/json/$name.json"
     fail=$((fail + 1))
   fi
@@ -115,7 +121,7 @@ echo "json: $jsons builds checked"
 # print `langc: CODE: ...` on stderr and print nothing on stdout.
 while read -r file code; do
   status=0
-  build/langc build "test/emit/$file" >"$tmp/out.json" 2>"$tmp/err" || status=$?
+  $(langc_for "test/emit/$file") build "test/emit/$file" >"$tmp/out.json" 2>"$tmp/err" || status=$?
   case "$status:$(head -n 1 "$tmp/err"):$(wc -c <"$tmp/out.json" | tr -d ' ')" in
     "1:langc: $code: "*":0") ;;
     *) echo "FAIL build $file: want exit 1, $code and no stdout, got exit $status"; fail=$((fail + 1)) ;;
@@ -124,12 +130,12 @@ done <test/emit/expect.txt
 echo "build refusals: $(wc -l <test/emit/expect.txt | tr -d ' ') checked"
 
 # -o writes the same document; a refused build leaves no file.
-build/langc build examples/formers.lang -o "$tmp/o.json" && cmp -s "$tmp/o.json" test/json/formers.json \
+$(langc_for examples/formers.lang) build examples/formers.lang -o "$tmp/o.json" && cmp -s "$tmp/o.json" test/json/formers.json \
   || { echo "FAIL build -o: the file differs"; fail=$((fail + 1)); }
 build/langc build test/emit/trap.lang -o "$tmp/no.json" 2>/dev/null || true
 [ ! -e "$tmp/no.json" ] || { echo "FAIL build -o: a refused build wrote a file"; fail=$((fail + 1)); }
 status=0
-build/langc build examples/formers.lang -x 2>/dev/null >/dev/null || status=$?
+$(langc_for examples/formers.lang) build examples/formers.lang -x 2>/dev/null >/dev/null || status=$?
 [ "$status" -eq 2 ] || { echo "FAIL build usage: want exit 2, got $status"; fail=$((fail + 1)); }
 # The S1 removal of the json verb: `langc json` exits 2 with the usage.
 status=0

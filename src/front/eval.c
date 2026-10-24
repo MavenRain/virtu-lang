@@ -20,6 +20,7 @@ static const char *const OP_NAMES[] = {
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_FOLD_NAT] = "fold",
   [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold",
   [OP_COUNFOLD] = "unfold", [OP_OUT] = "out",
+  [OP_TEXT] = "Text", [OP_TEXT_EQ] = "textEq", [OP_CREDITS_CHECK] = "creditsCheck", [OP_REF_UNKNOWN] = "refUnknown",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
   [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_SUCC] = "succ", [OP_NAT_EQ] = "natEq",
@@ -45,6 +46,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
   [OP_FOLD_FAMILY] = VARIES, [OP_COUNFOLD] = 2, [OP_OUT] = 1, [OP_FILTER] = 2, [OP_WITNESS] = 1,
+  [OP_TEXT] = 0, [OP_TEXT_EQ] = 2, [OP_CREDITS_CHECK] = 1, [OP_REF_UNKNOWN] = 2,
   [OP_PAYLOAD] = 1,
   [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2, [OP_SUCC] = 1,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_PROJ] = 1,
@@ -125,6 +127,15 @@ const Value *val_big(Machine *m, const uint32_t *limbs, uint64_t count) {
   if (v != NULL) {
     v->limbs = limbs;
     v->nat = count;
+  }
+  return v;
+}
+
+const Value *val_text(Machine *m, const char *bytes, uint64_t len) {
+  Value *v = new_value(m, VAL_TEXT);
+  if (v != NULL) {
+    v->name = bytes;
+    v->nat = len;
   }
   return v;
 }
@@ -564,6 +575,7 @@ static Scrut scrut_of(const Value *v) {
   case VAL_STUCK:
   case VAL_PAPP:
     return SCRUT_NEUTRAL;
+  case VAL_TEXT:
   case VAL_BIG:
   case VAL_NAT:
   case VAL_UNIV:
@@ -680,6 +692,7 @@ const Value *apply_value(Machine *m, const Value *fn, const Value *arg) {
     v->dom = fn;
     v->arg = arg;
     return v;
+  case VAL_TEXT:
   case VAL_BIG:
   case VAL_NAT:
   case VAL_UNIV:
@@ -2043,6 +2056,7 @@ static int line_constant(Machine *m, const Value *line, const Value *head) {
 static const Value *transp_data(Machine *m, const Value *head, const Value *line, const Value *phi, const Value *base) {
   int neutral = scrut_of(base) == SCRUT_NEUTRAL;
   switch (head->op) {
+  case OP_TEXT:
   case OP_NAT:
   case OP_FIN:
   case OP_EMPTY:
@@ -2121,6 +2135,9 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_FILTER:
   case OP_WITNESS:
   case OP_PAYLOAD:
+  case OP_TEXT_EQ:
+  case OP_CREDITS_CHECK:
+  case OP_REF_UNKNOWN:
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
@@ -2185,6 +2202,7 @@ static const Value *transp(Machine *m, const Value *line, const Value *phi, cons
     return transp_sigma(m, line, face, base);
   case VAL_TRAP:
     return head;
+  case VAL_TEXT:
   case VAL_BIG:
   case VAL_NAT:
   case VAL_LAM:
@@ -2395,7 +2413,7 @@ static int same_head_at(Machine *m, const Value *b, const Value *v) {
   const Value *x = closure_apply(m, b, fresh_ivar(m));
   if (x == NULL)
     return 0;
-  if (v->kind == VAL_NAT || v->kind == VAL_BIG)
+  if (v->kind == VAL_NAT || v->kind == VAL_BIG || v->kind == VAL_TEXT)
     return x->kind == v->kind && conv_values(m, 0, x, v);
   return x->kind == VAL_OP && x->op == v->op && x->inst == v->inst && x->argc == v->argc;
 }
@@ -2412,7 +2430,7 @@ static const Value *hcomp_data(Machine *m, const Value *ty, const Value *phi, co
   if (hit_type(m, ty))
     return hcomp_formal(m, ty, phi, sys, base);
   if (scrut_of(base) == SCRUT_NEUTRAL ||
-      (base->kind != VAL_NAT && base->kind != VAL_BIG && base->kind != VAL_OP))
+      (base->kind != VAL_NAT && base->kind != VAL_BIG && base->kind != VAL_TEXT && base->kind != VAL_OP))
     return hcomp_stuck(m, ty, phi, sys, base);
   for (k = 0; k + 1u < sys->argc; k += 2u)
     if (!ival_is_end(face_norm(m, sys->args[k]), 0) && !same_head_at(m, sys->args[k + 1u], base))
@@ -2534,6 +2552,7 @@ static const Value *hcomp(Machine *m, const Value *ty, const Value *phi, const V
     return hcomp_univ(m, face, sys, base);
   case VAL_TRAP:
     return ty;
+  case VAL_TEXT:
   case VAL_BIG:
   case VAL_NAT:
   case VAL_LAM:
@@ -2784,6 +2803,7 @@ static const Value *val_isubst(Machine *m, const Value *v, uint32_t level, const
     r = ival_replace(m, v, level, s);
     break;
   case VAL_UNIV:
+  case VAL_TEXT:
   case VAL_BIG:
   case VAL_NAT:
   case VAL_VAR:
@@ -3087,10 +3107,70 @@ static const Value *reduce_out(Machine *m, uint32_t inst, const Value *const *a,
   return val_op(m, VAL_OP, OP_CTOR, r->inst, r->field, args, r->argc);
 }
 
+/* textEq a b (S5): some of the unit value when the bytes agree, else none.
+   A neutral argument stays stuck. */
+static const Value *text_eq(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  const Value **some;
+  if (a[0]->kind == VAL_TRAP || a[1]->kind == VAL_TRAP)
+    return a[0]->kind == VAL_TRAP ? a[0] : a[1];
+  if (blocked(m, a[0], OP_TEXT_EQ, 0, 0, a, n, &out) || blocked(m, a[1], OP_TEXT_EQ, 0, 0, a, n, &out))
+    return out;
+  if (a[0]->kind != VAL_TEXT || a[1]->kind != VAL_TEXT)
+    return internal(m, "a Text operation on a value that is not a Text");
+  if (a[0]->nat != a[1]->nat || memcmp(a[0]->name, a[1]->name, (size_t)a[0]->nat) != 0)
+    return constant(m, OP_NONE);
+  some = arena_alloc(m->arena, sizeof *some);
+  if (some == NULL)
+    return oom(m);
+  some[0] = constant(m, OP_UNIT_VAL);
+  return some[0] == NULL ? NULL : val_op(m, VAL_OP, OP_SOME, 0, 0, some, 1);
+}
+
+/* creditsCheck n (S5): n when n is below 2^64, else the run-time refusal
+   EVAL_CREDITS_OVERFLOW. A neutral argument stays stuck. */
+static const Value *credits_check(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  Big b;
+  uint64_t x = 0;
+  if (a[0]->kind == VAL_TRAP)
+    return a[0];
+  if (nat_blocked(m, a[0], OP_CREDITS_CHECK, a, n, &out))
+    return out;
+  if (!is_nat(a[0]))
+    return internal(m, "a Nat operation on a value that is not a Nat");
+  if (!big_of(m, a[0], &b))
+    return oom(m);
+  if (big_fits_u64(b, &x))
+    return val_nat(m, x);
+  diag_fail(m->diag, "EVAL_CREDITS_OVERFLOW", m->def, "a Credits value is above 2^64 - 1");
+  return NULL;
+}
+
+/* refUnknown A id (S5): the run-time refusal EVAL_REF_UNKNOWN at a literal
+   id, as no instance in the world has the id. A neutral id stays stuck. */
+static const Value *ref_unknown(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  Big b;
+  const char *digits = NULL;
+  size_t len = 0;
+  if (a[1]->kind == VAL_TRAP)
+    return a[1];
+  if (nat_blocked(m, a[1], OP_REF_UNKNOWN, a, n, &out))
+    return out;
+  if (!is_nat(a[1]))
+    return internal(m, "a reference id that is not a Nat");
+  if (!big_of(m, a[1], &b) || !big_text(m->arena, b, &digits, &len))
+    return oom(m);
+  diag_fail(m->diag, "EVAL_REF_UNKNOWN", m->def, "the reference id %.*s has no instance in the world", (int)len, digits);
+  return NULL;
+}
+
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
   if (!arity_ok(m, op, inst, n))
     return internal(m, "an operation with the wrong number of arguments");
   switch (op) {
+  case OP_TEXT:
   case OP_NAT:
   case OP_FIN:
   case OP_EMPTY:
@@ -3169,6 +3249,12 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_DEC_EQ_FIN:
   case OP_DEC_EQ_NAT:
     return dec_eq(m, op, a, n);
+  case OP_TEXT_EQ:
+    return text_eq(m, a, n);
+  case OP_CREDITS_CHECK:
+    return credits_check(m, a, n);
+  case OP_REF_UNKNOWN:
+    return ref_unknown(m, a, n);
   case OP_NAT_EQ:
   case OP_NAT_LE:
     return nat_test(m, op, a, n);
@@ -3242,6 +3328,8 @@ static const Value *eval_inner(Machine *m, const Env *env, const Core *c) {
     return def_value(m, c->index);
   case CORE_NAT:
     return val_nat(m, c->nat);
+  case CORE_TEXT:
+    return val_text(m, c->name, c->nat);
   case CORE_BIG:
     return val_big(m, c->limbs, c->nat);
   case CORE_TRAP:
@@ -3533,6 +3621,8 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
     case VAL_UNIV:
     case VAL_VAR:
       return a->nat == b->nat;
+    case VAL_TEXT:
+      return a->nat == b->nat && memcmp(a->name, b->name, (size_t)a->nat) == 0;
     case VAL_BIG:
       return a->nat == b->nat && memcmp(a->limbs, b->limbs, (size_t)a->nat * sizeof *a->limbs) == 0;
     case VAL_TRAP:
@@ -3768,6 +3858,8 @@ static const Core *quote_inner(Machine *m, uint32_t level, const Value *v) {
   switch (v->kind) {
   case VAL_NAT:
     return core_leaf(m, CORE_NAT, v->nat);
+  case VAL_TEXT:
+    return quote_literal(m, CORE_TEXT, v);
   case VAL_BIG:
     return quote_literal(m, CORE_BIG, v);
   case VAL_TRAP:
@@ -3945,6 +4037,7 @@ static void print_binder(Printer *p, const Value *v) {
     print_value(p, v->dom, 0);
     put(p, ") ");
     break;
+  case VAL_TEXT:
   case VAL_BIG:
   case VAL_NAT:
   case VAL_TRAP:
@@ -4095,6 +4188,25 @@ static void print_counfold(Printer *p, const Value *v, int atom) {
   put(p, atom ? ")" : "");
 }
 
+/* A Text value as a string literal that the lexer reads back (S5): \" and
+   \\ for a quote and a backslash, \xHH for a control byte, every other
+   byte as it is. */
+static void put_text_literal(Printer *p, const Value *v) {
+  char esc[8];
+  uint64_t i;
+  put(p, "\"");
+  for (i = 0; i < v->nat; i++) {
+    unsigned char ch = (unsigned char)v->name[i];
+    int quote = ch == '"' || ch == '\\';
+    if (quote || (ch >= 0x20u && ch != 0x7fu))
+      snprintf(esc, sizeof esc, "%s%c", quote ? "\\" : "", ch);
+    else
+      snprintf(esc, sizeof esc, "\\x%02x", ch);
+    put(p, esc);
+  }
+  put(p, "\"");
+}
+
 static void print_other(Printer *p, const Value *v, int atom) {
   char num[32];
   if (v == NULL) {
@@ -4123,6 +4235,9 @@ static void print_other(Printer *p, const Value *v, int atom) {
     put(p, big_text(p->m->arena, b, &text, &len) ? text : "?");
     return;
   }
+  case VAL_TEXT:
+    put_text_literal(p, v);
+    return;
   case VAL_TRAP:
     put(p, "trap");
     return;
@@ -4170,6 +4285,7 @@ static void print_other(Printer *p, const Value *v, int atom) {
     put(p, " @ ");
     print_value(p, v->arg, 1);
     break;
+  case VAL_TEXT:
   case VAL_BIG:
   case VAL_NAT:
   case VAL_TRAP:

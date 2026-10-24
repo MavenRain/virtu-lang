@@ -219,6 +219,64 @@ kickoff proposals K1 to K12 are all (a). These are now rulings:
 
 S4 staged review correction: the proposed variable graph relation failed transitivity and substitution checks and is removed from judgmental conversion. The implementation retains layer eta, typed eta at closed or neutral seeds, and uniform comparisons with convertible seeds of the same type. A cofamily without recursive Y fields compares by its finite observations. L1, L2 and L3 remain `refl`; Store laws and EnvK coassociativity also check. Full StreamK/CofreeK coassociativity and stream round trips require a stronger path rule and are currently explicit `refl` refusals. The kickoff ruling above records the original proposal; it does not establish these unsupported conversion cases.
 
+### USER ruling (S5 kickoff)
+
+On 2026-10-24 the USER said: "Rule defaults for K1-K14 (S5-kickoff.md
+`## STEP 3 K rows`). Follow ~/Documents/virtu-lang-work/S5-build-PROMPT.md."
+Thus the S5 kickoff proposals K1 to K14 are all (a). These are now rulings:
+
+- K1 `Text` comes back as a kernel builtin with string literals (double
+  quotes) and `textEq : Text -> Text -> Option Unit` only. `Role := Text`
+  and `Value := Text`. `Credits := Nat` with the library `creditsAdd`,
+  `creditsSub` (to `Option`), `creditsMul` and `creditsLe`. `creditsAdd` and
+  `creditsMul` call one kernel builtin that refuses a value above 2^64 - 1
+  at run time. `Entry` and `Listing` are `Prod` chains. The kernel fixtures
+  that are not cell monads, duals or carriers go to a domain file that only
+  the gate loads.
+- K2 each class is a reference type with its own type: `cell AvatarC
+  (X : Type 0) := avatarRef : Nat -> X` and `Avatar := AvatarC Empty`, and
+  the same for `VirtuCard`, `VirtualTerminal` and `VirtualItem`. The state
+  is in the world. An id with no instance is a run-time refusal.
+- K3 one `cell Virt (X : Type 0)` has 28 0-cells (27 rows; row 4 gives
+  `avatarCard` and `attachCard`). An op with the result R has a field
+  `R -> X`. An op with the result `Unit` has a field `X`. The op fields have
+  no names.
+- K4 `W := List Instance`, in run order. `Instance` is a cell at `Empty`
+  with `avatarI`, `cardI`, `terminalI` and `itemI`, each with the state
+  record of section 4. The id of an instance is its position.
+- K5 `run : (X : Type 0) -> Virt X -> W -> Prod W X` is a library fold with
+  one case for each 0-cell. `langc build` finds `def main : Virt Unit`, runs
+  it from the empty world and writes the final world.
+- K6 json.c writes the world: `{"virtu-lang":1,"instances":[...]}` with the
+  keys `id`, `class` and `state`. Text is a JSON string, Credits a JSON
+  number, an enumeration its name, a reference its id, an `Option` of a
+  reference the id or `null`, and `attributes` an object in the order of
+  the first set. A program with no `main` keeps the S1 to S4 form.
+- K7 `SecurityLevelC` (4), `RarityC` (5) and the entry kinds (7) are cells
+  with nullary 0-cells at `Empty`, each with a path to `Fin k` by `ua` and
+  `isoToEquiv`. `multiplier : Rarity -> Credits` is a fold.
+- K8 the S4 leftovers stay open: S4 open points 8, 9 and 10, the review
+  leftovers and the historical S4 K10 table.
+- K9 the tests are in the guest language and in the C runner:
+  examples/virt.lang, examples/carriers.lang, test/json/virt.json, check,
+  parse and build refusals, and path regressions. There is no new host
+  harness.
+- K10 S5 runs U1 to U10 again at the S5 tree and adds the sites of the new
+  code (V1 to Vn). U2 gets a killer try or an equivalent-mutant note.
+- K11 the predicted S5 gate is: examples 39, parse 16, check about 124,
+  evals about 185, json 38, build refusals 7, regressions 6, printer 2,
+  path regressions about 203.
+- K12 PLAN 2.5 cites Plotkin and Pretnar for the runner, qualifies the
+  Katsumata, Rivas and Uustalu cite and gives the Jacobs details. PLAN 2.5
+  and 5.1 say "28 0-cells (27 rows)". PLAN 6 gets the RFC 8259 notes. The
+  S4 kickoff ruling and the "S4 staged review correction" paragraph both
+  stay.
+- K13 S5 accepts that conversion is incomplete at full StreamK and CofreeK
+  coassociativity. A stronger path rule needs a source for the cubical
+  model first.
+- K14 Q2 is dropped. The all-pairs idea is future work that needs a
+  soundness argument first.
+
 ## 2. The type constructors
 
 ### 2.1 The ambient category
@@ -354,17 +412,29 @@ monad laws, the comonad laws and the laws of each cell are paths (O6).
 The four classes of the images have state that the operations change. This
 plan gives that state with one cell monad and its dual (O7 (a)):
 
-- The program monad `Virt` is the cell monad whose 0-cells are the 27
-  operations of section 5. Its 1-cells are the laws of section 5.3 (S6). A
-  program is `def main : Virt Unit`.
+- The program monad `Virt` is the cell monad whose 28 0-cells (27 rows)
+  are the operations of section 5. Its 1-cells are the laws of section 5.3
+  (S6). A program is `def main : Virt Unit`.
 - The world `W` is the state of all instances: for each class, the list of
   its instances in the order the program makes them. The world comonad is
   `Store W`, the dual of `State W` (2.3). An instance is a coalgebra of its
-  class interface (objects as coalgebras, Jacobs).
+  class interface (objects as coalgebras: B. Jacobs, "Objects and classes,
+  co-algebraically", in Object-Orientation with Parallelism and
+  Persistence, Kluwer, 1996, pp. 83 to 103; CWI report CS-R9536, 1995). S5
+  gives an instance as an id and a state in the world, the identifier and
+  local state form of the source; S5 does not build the creation by the
+  terminal coalgebra (C19).
 - The runner is the eliminator of `Virt` into the `Store W` carrier
-  `W -> W * X`: a monad and comonad interaction law (Katsumata, Rivas and
-  Uustalu, 2020). Its case for a 0-cell runs the operation on the world. Its
+  `W -> W * X`: the homomorphism out of the free model, the handler form of
+  G. Plotkin and M. Pretnar, "Handling algebraic effects", LMCS 9(4:23),
+  2013 (C20). Its case for a 0-cell runs the operation on the world. Its
   case for a 1-cell is a path that shows that the law holds in the world.
+  The beta equations give this homomorphism; its uniqueness needs an eta
+  equation (C20).
+- The carrier `W -> W * X` has the form of a stateful runner (S. Katsumata,
+  E. Rivas and T. Uustalu, "Interaction laws of monads and comonads", LICS
+  2020, the abstract). S5 does not check the State/Store interaction law of
+  that paper (C18).
 - `langc build` runs `main` from the empty world and writes the final world
   (section 6).
 
@@ -441,7 +511,8 @@ world. The state of an instance is in the world, not in the reference.
 ### 5.1 The operations
 
 Each row of the images is one 0-cell of `Virt`, except row 4 (a read and a
-write) and row 19 (the overload of row 18). A read of a field is a 0-cell,
+write) and row 19 (the overload of row 18). Thus `Virt` has 28 0-cells
+(27 rows): row 4 gives `avatarCard` and `attachCard`. A read of a field is a 0-cell,
 because the field is in the world. A failure is a value: `Option` or
 `Either Text`.
 
@@ -520,7 +591,13 @@ runs it from the empty world (2.5) and writes one JSON document:
   order of the run. `id` is that position. A reference is an `id`
   (O24 (a)).
 - `state` is the final state (section 4). An `attributes` object keeps the
-  order in which the keys were first set.
+  order in which the keys were first set. This order is in the text only:
+  RFC 8259 (section 4) notes that some JSON parsers do not show the member
+  order to the caller (C21).
+- A `Credits` value is a JSON number with all its digits, up to 2^64 - 1.
+  RFC 8259 (section 6) notes that a number above 2^53 - 1 is not
+  interoperable: a parser that uses IEEE 754 binary64 numbers can change
+  it (C21).
 - A run time refusal (a `Credits` overflow, the fuel limit, the arena
   limit) writes nothing and exits 1.
 - The kit rule "an instance is a top level definition with a data type" is

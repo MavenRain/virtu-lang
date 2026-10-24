@@ -1,1 +1,0 @@
-def wrong : Type 0 := Text

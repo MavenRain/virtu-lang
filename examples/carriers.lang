@@ -1,0 +1,25 @@
+-- The carriers (S5, K1 and K7): Text, Credits and the enumerations with
+-- their paths to Fin k. Transport along a path gives the code of a value
+-- and the value of a code.
+def greeting : Text := "Ada"
+def escaped : Text := "a\"b\\c\nd\te\x41"
+def sameText : Nat := option 0 (fun (u : Unit) => 1) (textEq "lamp" "lamp")
+def otherText : Nat := option 0 (fun (u : Unit) => 1) (textEq "lamp" "Lamp")
+def total : Credits := creditsAdd 20 30
+def scaled : Credits := creditsMul 20 (multiplier (rare Empty))
+def change : Credits := option 0 (fun (n : Credits) => n) (creditsSub 50 20)
+def short : Nat := option 0 (fun (n : Credits) => 1) (creditsSub 20 50)
+def inBudget : Fin 2 := creditsLe 20 50
+def overBudget : Fin 2 := creditsLe 50 20
+-- The largest Credits value: 2^64 - 1.
+def topCredits : Credits := creditsAdd 18446744073709551614 1
+def topTimes : Credits := multiplier (legendary Empty)
+def levelCode : Fin 4 := transp (fun (i : I) => securityPath @ i) i0 (high Empty)
+def levelBack : Fin 4 := securityToFin (transp (fun (i : I) => securityPath @ (~i)) i0 3)
+def rarityCode : Fin 5 := transp (fun (i : I) => rarityPath @ i) i0 (epic Empty)
+def rarityBack : Credits := multiplier (transp (fun (i : I) => rarityPath @ (~i)) i0 2)
+def kindCode : Fin 7 := transp (fun (i : I) => kindPath @ i) i0 (purchased Empty)
+def kindBack : Fin 7 := kindToFin (transp (fun (i : I) => kindPath @ (~i)) i0 4)
+def levelRound : Path (Fin 4) (securityToFin (securityOfFin 2)) 2 := securitySec 2
+def rarityRound : Path Rarity (rarityOfFin (rarityToFin (epic Empty))) (epic Empty) := rarityRet (epic Empty)
+def kindRound : Path EntryKind (kindOfFin (kindToFin (bonus Empty))) (bonus Empty) := kindRet (bonus Empty)

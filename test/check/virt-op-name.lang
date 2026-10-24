@@ -1,0 +1,2 @@
+-- A program name that is a Virt 0-cell of the library (R4).
+def transfer : Nat := 0

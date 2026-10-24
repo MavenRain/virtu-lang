@@ -135,6 +135,7 @@ static int starts_atom(TokKind kind) {
   switch (kind) {
     case TOK_IDENT:
     case TOK_NAT:
+    case TOK_STR:
     case TOK_LPAREN:
     case TOK_KW_TYPE:
     case TOK_KW_SIGMA:
@@ -351,8 +352,8 @@ static const Term *parse_leaf(Parser *p, TermKind kind) {
   /* A Nat span at UINT64_MAX keeps its digits: the checker re-reads them (S3). */
   int spanned = kind == TERM_VAR || (kind == TERM_NAT && tok->nat == UINT64_MAX);
   if (term == NULL) return NULL;
-  term->nat = tok->nat;
-  term->name = spanned ? token_text(p, tok) : NULL;
+  term->nat = kind == TERM_TEXT ? tok->str_len : tok->nat;
+  term->name = kind == TERM_TEXT ? tok->str : spanned ? token_text(p, tok) : NULL;
   bump(p);
   return spanned && term->name == NULL ? NULL : term;
 }
@@ -374,6 +375,7 @@ static const Term *parse_atom(Parser *p) {
   switch (tok->kind) {
     case TOK_IDENT: return parse_leaf(p, TERM_VAR);
     case TOK_NAT: return parse_leaf(p, TERM_NAT);
+    case TOK_STR: return parse_leaf(p, TERM_TEXT);
     case TOK_LPAREN: return parse_paren(p);
     case TOK_KW_TYPE: return parse_universe(p);
     case TOK_KW_SIGMA: return parse_sigma(p);
@@ -644,6 +646,7 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_EOF:
     case TOK_IDENT:
     case TOK_NAT:
+    case TOK_STR:
     case TOK_LPAREN:
     case TOK_RPAREN:
     case TOK_COLON:

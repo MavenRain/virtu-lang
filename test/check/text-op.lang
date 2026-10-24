@@ -1,0 +1,2 @@
+-- A Text operation that is not in the builtin table (S5).
+def joined : Text := textConcat "a" "b"

@@ -1,0 +1,3 @@
+-- A card of more than 2^64 - 1 credits: the build refuses.
+def main : Virt Unit := avatar Unit "Ada" explorer (fun (a : Avatar) =>
+  createVirtucard Unit a 18446744073709551616 (fun (c : VirtuCard) => pure unit))
