@@ -45,7 +45,6 @@ typedef enum {
   OP_FOLD_NAT,
   OP_FOLD_LIST,
   OP_FOLD_FAMILY,
-  OP_UNFOLD,
   OP_FILTER,
   OP_WITNESS,
   OP_PAYLOAD,
@@ -300,6 +299,9 @@ typedef struct {
   /* A cell (S2 K3): the family that a `cell` declaration makes. 0 for a
      family. */
   int cell;
+  /* A cocell (S4 K2): the cofamily that a `cocell` declaration makes. 0
+     for an other family. */
+  int cocell;
 } FamilyInfo;
 
 typedef struct {

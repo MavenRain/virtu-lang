@@ -1,0 +1,2 @@
+-- The last parameter of a cocell must be the carrier, of type Type 0 (S4 K2).
+cocell Big (X : Type 1) := bigK : X -> X

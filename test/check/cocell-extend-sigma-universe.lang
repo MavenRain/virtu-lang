@@ -1,0 +1,4 @@
+-- A Sigma containing a Type 0 field has sort Type 1.
+def extendBigPair : (T : Type 0) * T := pack Nat 0
+def badExtendSigma : StreamK Nat -> (T : Type 0) * T :=
+  fun w => extract (extend (fun (s : StreamK Nat) => extendBigPair) w)

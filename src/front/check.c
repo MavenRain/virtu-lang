@@ -85,6 +85,9 @@ typedef enum {
   RULE_ELIM,
   RULE_UNFOLD,
   RULE_OUT,
+  RULE_EXTRACT,
+  RULE_EXTEND,
+  RULE_DUPLICATE,
   RULE_SYM,
   RULE_CONG,
   RULE_FUNEXT,
@@ -154,7 +157,7 @@ static const Builtin BUILTINS[] = {
   {"filter", 2, RULE_FILTER, OP_FILTER, OP_NAT, 0},
   {"fold", 2, RULE_FOLD, OP_FOLD_NAT, OP_NAT, 0},
   {"elim", 3, RULE_ELIM, OP_ELIM, OP_FAMILY, 0},
-  {"unfold", 3, RULE_UNFOLD, OP_UNFOLD, OP_LIST, 0},
+  {"unfold", 2, RULE_UNFOLD, OP_COUNFOLD, OP_NAT, 0},
   {"sym", 1, RULE_SYM, OP_INTERVAL, OP_NAT, 0},
   {"cong", 2, RULE_CONG, OP_INTERVAL, OP_NAT, 0},
   {"funExt", 1, RULE_FUNEXT, OP_INTERVAL, OP_NAT, 0},
@@ -170,7 +173,10 @@ static const Builtin BUILTINS[] = {
   {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FIN, 2},
   {"natLe", 2, RULE_NAT2, OP_NAT_LE, OP_FIN, 2},
   {"absurd", 2, RULE_ABSURD, OP_ABSURD, OP_NAT, 0},
-  {"out", 1, RULE_OUT, OP_OUT, OP_NAT, 0}
+  {"out", 1, RULE_OUT, OP_OUT, OP_NAT, 0},
+  {"extract", 1, RULE_EXTRACT, OP_PROJ, OP_NAT, 0},
+  {"extend", 2, RULE_EXTEND, OP_COUNFOLD, OP_NAT, 0},
+  {"duplicate", 1, RULE_DUPLICATE, OP_COUNFOLD, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -523,6 +529,11 @@ static const Core *finish(Checker *c, const Core *k, const Value *hint, const Va
 /* 1 when T is a cell type C ps V (S2 K4). */
 static int is_cell_type(const Machine *m, const Value *t) {
   return val_is(t, OP_FAMILY) && m->families[t->inst].cell;
+}
+
+/* 1 when T is a cocell type D ps X (S4 K2). */
+static int is_cocell_type(const Machine *m, const Value *t) {
+  return val_is(t, OP_FAMILY) && m->families[t->inst].cocell;
 }
 
 /* 1 when T is Option A, List A, Sum E A or a cell type C ps A (S2 K4).
@@ -944,12 +955,14 @@ static const Core *rule_pure(Call *k) {
   Carrier carrier = CARRIER_OPTION;
   const Value *a = NULL;
   if (!carrier_of(c->m, k->hint, &carrier, &a))
-    return need_type(k, "Option A, List A or Sum E A");
+    return need_type(k, "Option A, List A, Sum E A or a cell type C ps");
   k->type = k->hint;
   if (carrier == CARRIER_CELL)
     return cell_pure(c, k->hint, c->level, check(c, k->args[0], a));
   return op3(k->c, OP_PURE, carrier, 1, check(k->c, k->args[0], a), NULL, NULL);
 }
+
+static const Core *cocell_map(Call *k, const Core *w, const Value *wt);
 
 /* map f m */
 static const Core *rule_map(Call *k) {
@@ -964,6 +977,8 @@ static const Core *rule_map(Call *k) {
   const Core *f;
   if (x == NULL)
     return NULL;
+  if (is_cocell_type(c->m, mt))
+    return cocell_map(k, x, mt);
   if (!carrier_of(c->m, mt, &carrier, &a))
     return not_carrier(k, mt);
   f = fn_into(c, k->args[0], a, carrier_of(c->m, k->hint, &hint_carrier, &hint_elem) ? hint_elem : NULL, &b);
@@ -1375,6 +1390,9 @@ static const Value *path_case_type(Checker *c, uint32_t inst, const Value *st, c
   for (side = 0; side < 2; side++)
     ends[side] = quote_value(m, l, case_image(c, inst, st, cores, done, val_iend(m, side), NULL, l));
   t = ends[0] == NULL || ends[1] == NULL ? NULL : core_ends(c, CORE_PATHP, "_", NULL, quote_value(m, l + 1u, line_res(c, inst, st, res, val_ivar(m, l), NULL)), ends[0], ends[1]);
+  /* An earlier failure stays: the first failure wins (base.h). */
+  if (t == NULL)
+    return vnul(FAIL(c, "HIT_BOUNDARY", "the case of the path constructor %s has no type: an end of its boundary does not compute", ctor->name));
   return here(c, case_fields(c, ctor, env, res, t));
 }
 
@@ -1807,25 +1825,179 @@ static const Core *rule_out(Call *k) {
   return k->type == NULL ? NULL : op3(c, OP_OUT, st->inst, 1, x, NULL, NULL);
 }
 
-/* unfold g limit seed, with g : S -> Option (Prod A S). The cofamily form
-   takes 2 arguments (S4 Q8). */
-static const Core *rule_unfold(Call *k) {
+/* The argument W of extract, extend or duplicate, of a cocell type *WT =
+   D ps X (S4 K2). */
+static const Core *cocell_arg(Call *k, const Term *w, const Value **wt) {
   Checker *c = k->c;
-  const Value *st = NULL;
-  const Value *a;
-  const Core *seed;
-  const Core *limit;
+  const Core *x = infer(c, w, wt);
+  if (x == NULL)
+    return NULL;
+  return is_cocell_type(c->m, *wt) ? x : nul(FAIL(c, "TYPE_MISMATCH", "%s needs a value of a cocell type, found a term of type %s", k->b->name, show(c, *wt)));
+}
+
+/* Field I of the layer out X, with X a value of the cocell FAM (S4 K2): a
+   projection of the node. Field 0 is the extract field. */
+static const Core *cocell_proj(Checker *c, uint32_t fam, const Core *x, uint32_t i) {
+  const Core *o = core_op(c, OP_OUT, fam, 0, &x, 1);
+  return o == NULL ? NULL : core_op(c, OP_PROJ, c->m->families[c->m->families[fam].layer].first_ctor, i, &o, 1);
+}
+
+/* unfold (fun s => nodeD ps B WT (HEAD s) p1(out s) .. pn(out s)) W at the
+   cocell type RES = D ps B, with W : WT = D ps X (S4 K2). HEAD is a
+   function on WT, or NULL for the identity (duplicate). The node is the
+   canonical node: one projection of out s for each field after extract, so
+   that out (unfold g w) is a node at a variable w (probe cL1). */
+static const Core *cocell_unfold(Checker *c, const Value *res, const Value *wt, const Core *w, const Value *head) {
+  Machine *m = c->m;
+  const FamilyInfo *f = &m->families[res->inst];
+  uint32_t node = m->families[f->layer].first_ctor;
+  uint32_t n = m->ctors[node].field_count;
+  uint32_t p = f->param_count;
+  const Core **cores = arena_alloc(m->arena, ((size_t)p + 1u + n) * sizeof *cores);
+  const Core *s = core_index(c, CORE_VAR, 0);
   const Core *g;
-  if (k->used == 2u)
-    return rule_counfold(k);
-  if (!val_is(k->hint, OP_LIST))
-    return need_type(k, "List A");
-  a = k->hint->args[0];
-  seed = infer(c, k->args[2], &st);
-  limit = seed == NULL ? NULL : check(c, k->args[1], nat_type(c));
-  g = limit == NULL ? NULL : check(c, k->args[0], val_arrow(c->m, st, tyop(c, OP_OPTION, 1, tyop(c, OP_PROD, 2, a, st, NULL), NULL, NULL)));
-  k->type = k->hint;
-  return op3(c, OP_UNFOLD, 0, 3, g, limit, seed);
+  Core *out;
+  uint32_t i;
+  if (cores == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  for (i = 0; i < p; i++)
+    cores[i] = quote_value(m, c->level + 1u, res->args[i]);
+  cores[p] = quote_value(m, c->level + 1u, wt);
+  cores[p + 1u] = head == NULL ? s : core_app(c, quote_value(m, c->level + 1u, head), s);
+  for (i = 1; i < n; i++)
+    cores[p + 1u + i] = cocell_proj(c, wt->inst, s, i);
+  for (i = 0; i < p + 1u + n; i++)
+    if (cores[i] == NULL)
+      return NULL;
+  g = core_op(c, OP_CTOR, node, 0, cores, p + 1u + n);
+  g = g == NULL ? NULL : core_bind(c, CORE_LAM, "s", NULL, g);
+  out = g == NULL ? NULL : (Core *)op3(c, OP_COUNFOLD, res->inst, 2, g, w, NULL);
+  if (out == NULL)
+    return NULL;
+  /* The result and seed types, for source printing, as in rule_counfold. */
+  out->a = quote_value(m, c->level, res);
+  out->b = quote_value(m, c->level, wt);
+  return out->a == NULL || out->b == NULL ? NULL : out;
+}
+
+/* The element type B of an expected cocell type D ps B, or NULL. */
+static const Value *cocell_hint(Call *k) {
+  return is_cocell_type(k->c->m, k->hint) ? k->hint->args[k->hint->argc - 1u] : NULL;
+}
+
+/* Recheck an inferred cocell result type at the carrier sort Type 0.
+   Give every local a fresh surface name, so printing and rechecking keep
+   the same levels even when source binders shadow each other. */
+static int cocell_result_ok(Checker *c, const Value *b) {
+  static const char prefix[] = "def cocell_result : Type 0 := ";
+  const Scope *saved = c->scope;
+  const Scope *s;
+  Scope *locals = arena_alloc(c->m->arena, ((size_t)c->level + 1u) * sizeof *locals);
+  const char **names = arena_alloc(c->m->arena, ((size_t)c->level + 1u) * sizeof *names);
+  uint32_t i = 0;
+  uint32_t suffix = 0;
+  size_t cap = PRINT_MAX;
+  char *source;
+  TokenList toks;
+  DeclList decls;
+  int printed;
+  int ok;
+  if (locals == NULL || names == NULL)
+    return FAIL(c, "OOM", "out of memory");
+  /* A printer fallback name must never capture a result variable that
+     escaped fn_into's non-dependence check. */
+  if (quote_value(c->m, c->level, b) == NULL)
+    return 0;
+  for (s = saved; s != NULL; s = s->next, i++) {
+    char *name = arena_alloc(c->m->arena, 32u);
+    if (name == NULL)
+      return FAIL(c, "OOM", "out of memory");
+    do {
+      snprintf(name, 32u, "cocell_local%u", suffix++);
+    } while (name_owner(c, name) != NULL || find_local(c, name) != NULL);
+    locals[i] = *s;
+    locals[i].name = name;
+    locals[i].next = s->next == NULL ? NULL : &locals[i + 1u];
+    names[s->level] = name;
+  }
+  for (;;) {
+    source = arena_alloc(c->m->arena, cap);
+    if (source == NULL)
+      return FAIL(c, "OOM", "out of memory");
+    memcpy(source, prefix, sizeof prefix - 1u);
+    printed = value_print_depth(c->m, names, c->level, b,
+                                source + sizeof prefix - 1u,
+                                cap - sizeof prefix + 1u,
+                                CHECK_DEPTH_LIMIT - c->depth);
+    if (printed == 1)
+      break;
+    if (c->m->diag->set)
+      return 0;
+    if (printed < 0)
+      return FAIL(c, "CHECK_DEPTH", "the inferred cocell result type is nested too deeply to recheck");
+    if (cap > SIZE_MAX / 2u)
+      return FAIL(c, "OOM", "the inferred cocell result type is too large to recheck");
+    cap *= 2u;
+  }
+  memset(&decls, 0, sizeof decls);
+  if (!lex_core_source(c->m->arena, "cocell result type", source, strlen(source), &toks, c->m->diag) ||
+      !parse_source(c->m->arena, "cocell result type", ORIGIN_PROGRAM, &toks, &decls, c->m->diag))
+    return 0;
+  c->scope = saved == NULL ? NULL : locals;
+  ok = check(c, decls.items[0].body, val_univ(c->m, 0)) != NULL;
+  c->scope = saved;
+  return ok;
+}
+
+/* extract w : X, with w : D ps X (S4 K2): field 0 of out w. */
+static const Core *rule_extract(Call *k) {
+  const Value *wt = NULL;
+  const Core *w = cocell_arg(k, k->args[0], &wt);
+  if (w == NULL)
+    return NULL;
+  k->type = wt->args[wt->argc - 1u];
+  return cocell_proj(k->c, wt->inst, w, 0);
+}
+
+/* duplicate w : D ps (D ps X), with w : D ps X (S4 K2). */
+static const Core *rule_duplicate(Call *k) {
+  const Value *wt = NULL;
+  const Core *w = cocell_arg(k, k->args[0], &wt);
+  if (w == NULL)
+    return NULL;
+  k->type = cell_at(k->c, wt, wt);
+  return k->type == NULL ? NULL : cocell_unfold(k->c, k->type, wt, w, NULL);
+}
+
+/* extend f w : D ps B, with f : D ps X -> B and w : D ps X (S4 K2). */
+static const Core *rule_extend(Call *k) {
+  Checker *c = k->c;
+  const Value *wt = NULL;
+  const Value *b = NULL;
+  const Core *w = cocell_arg(k, k->args[1], &wt);
+  const Core *f = w == NULL ? NULL : fn_into(c, k->args[0], wt, cocell_hint(k), &b);
+  const Value *fv = f == NULL || !cocell_result_ok(c, b) ? NULL : here(c, f);
+  if (fv == NULL)
+    return NULL;
+  k->type = cell_at(c, wt, b);
+  return k->type == NULL ? NULL : cocell_unfold(c, k->type, wt, w, fv);
+}
+
+/* map g w at a cocell type WT = D ps X (S4 K2): extend (fun s => g
+   (extract s)) w, with g : X -> B. */
+static const Core *cocell_map(Call *k, const Core *w, const Value *wt) {
+  Checker *c = k->c;
+  const Value *b = NULL;
+  const Core *g = fn_into(c, k->args[0], wt->args[wt->argc - 1u], cocell_hint(k), &b);
+  const Value *gv = g == NULL || !cocell_result_ok(c, b) ? NULL : here(c, g);
+  const Core *e = gv == NULL ? NULL : cocell_proj(c, wt->inst, core_index(c, CORE_VAR, 0), 0);
+  const Core *gq = e == NULL ? NULL : quote_value(c->m, c->level + 1u, gv);
+  const Core *h = gq == NULL ? NULL : core_bind(c, CORE_LAM, "s", NULL, core_app(c, gq, e));
+  const Value *hv = h == NULL ? NULL : here(c, h);
+  if (hv == NULL)
+    return NULL;
+  k->type = cell_at(c, wt, b);
+  return k->type == NULL ? NULL : cocell_unfold(c, k->type, wt, w, hv);
 }
 
 /* The binder name of a path abstraction made from a path type: the name of
@@ -2634,9 +2806,15 @@ static const Core *rule(Call *k) {
   case RULE_ELIM:
     return rule_elim(k);
   case RULE_UNFOLD:
-    return rule_unfold(k);
+    return rule_counfold(k);
   case RULE_OUT:
     return rule_out(k);
+  case RULE_EXTRACT:
+    return rule_extract(k);
+  case RULE_EXTEND:
+    return rule_extend(k);
+  case RULE_DUPLICATE:
+    return rule_duplicate(k);
   case RULE_SYM:
     return rule_sym(k);
   case RULE_CONG:
@@ -2964,10 +3142,6 @@ static const Core *apply_known(Checker *c, const Term *whole, const Head *h, con
     if (val_is(dom, OP_FAMILY))
       arity = c->m->families[dom->inst].ctor_count + 2u;
   }
-  /* unfold at a cofamily hint, or with no hint, takes 2 arguments (S4 Q8);
-     the kit form at a List hint keeps 3. */
-  if (h->kind == HEAD_BUILTIN && h->builtin->rule == RULE_UNFOLD && argc == 2u && (hint == NULL || is_cofamily(c->m, hint)))
-    arity = 2u;
   if (argc < arity && hint != NULL && hint->kind == VAL_PI)
     return eta(c, whole, hint, type);
   if (argc < arity)
@@ -3662,6 +3836,7 @@ static int check_header(Checker *c, const Decl *d, uint32_t fam, uint32_t first,
   f->cofamily = 0;
   f->layer = 0;
   f->cell = 0;
+  f->cocell = 0;
   for (i = 0; i < d->ctor_count; i++) {
     memset(&m->ctors[m->ctor_count + i], 0, sizeof m->ctors[0]);
     m->ctors[m->ctor_count + i].family = fam;
@@ -3760,35 +3935,16 @@ static int codata_positive(const Core *t, uint32_t ix) {
   return (t->kind == CORE_VAR && t->index == ix) || !core_uses(t, ix);
 }
 
-/* `cofamily C ps := F ps` (S4 Q1, Q2). F is a domain family with one more
-   parameter, the carrier X : Type 0. F is uniform, has point constructors
-   only and is a block of one (CODATA_FORM). Each field of F does not use
-   X, is X, or is a Pi chain with the codomain X (CODATA_POSITIVE). */
-static int check_cofamily(Checker *c, const Decl *d) {
+/* The part of a cofamily check after the body (S4 Q1, Q2), for a
+   `cofamily` and for the cofamily of a `cocell` (S4 K2). LAYER is the
+   layer family of the cofamily FAM. */
+static int cofamily_layer(Checker *c, const Decl *d, uint32_t fam, uint32_t layer) {
   Machine *m = c->m;
-  uint32_t fam = m->family_count;
   uint32_t p = (uint32_t)d->param_count;
-  uint32_t layer = fam;
-  uint32_t n = 0;
+  const FamilyInfo *l = &m->families[layer];
+  const Core *x = l->param_count == p + 1u ? l->param_types[p] : NULL;
   uint32_t i;
   uint32_t j;
-  const Term *t = d->body;
-  const FamilyInfo *l;
-  const Core *x;
-  if (!check_header(c, d, fam, fam, 1u, 0u))
-    return 0;
-  for (; t->kind == TERM_APP; t = t->left, n++) {
-    const Scope *s = t->right->kind == TERM_VAR ? find_local(c, t->right->name) : NULL;
-    if (n >= p || s == NULL || s->level != p - 1u - n)
-      return FAIL(c, "CODATA_FORM", "the body of %s must be a domain family at the parameters of %s, in order", d->name, d->name);
-  }
-  for (i = 0; t->kind == TERM_VAR && find_local(c, t->name) == NULL && i < fam; i++)
-    if (strcmp(m->families[i].name, t->name) == 0 && !m->families[i].cofamily)
-      layer = i;
-  if (n != p || layer == fam)
-    return FAIL(c, "CODATA_FORM", "the body of %s must be a domain family at the parameters of %s, in order", d->name, d->name);
-  l = &m->families[layer];
-  x = l->param_count == p + 1u ? l->param_types[p] : NULL;
   if (x == NULL || x->kind != CORE_UNIV || x->nat != 0u || l->universe != 0u || l->index_count != 0u || l->block_count != 1u)
     return FAIL(c, "CODATA_FORM", "the layer %s of %s must be a uniform family in Type 0 outside a block, with one more parameter X : Type 0", l->name, d->name);
   /* Both parameter types are in the context of the earlier parameters, at
@@ -3808,6 +3964,33 @@ static int check_cofamily(Checker *c, const Decl *d) {
   m->families[fam].layer = layer;
   m->families[fam].universe = l->universe;
   return 1;
+}
+
+/* `cofamily C ps := F ps` (S4 Q1, Q2). F is a domain family with one more
+   parameter, the carrier X : Type 0. F is uniform, has point constructors
+   only and is a block of one (CODATA_FORM). Each field of F does not use
+   X, is X, or is a Pi chain with the codomain X (CODATA_POSITIVE). */
+static int check_cofamily(Checker *c, const Decl *d) {
+  Machine *m = c->m;
+  uint32_t fam = m->family_count;
+  uint32_t p = (uint32_t)d->param_count;
+  uint32_t layer = fam;
+  uint32_t n = 0;
+  uint32_t i;
+  const Term *t = d->body;
+  if (!check_header(c, d, fam, fam, 1u, 0u))
+    return 0;
+  for (; t->kind == TERM_APP; t = t->left, n++) {
+    const Scope *s = t->right->kind == TERM_VAR ? find_local(c, t->right->name) : NULL;
+    if (n >= p || s == NULL || s->level != p - 1u - n)
+      return FAIL(c, "CODATA_FORM", "the body of %s must be a domain family at the parameters of %s, in order", d->name, d->name);
+  }
+  for (i = 0; t->kind == TERM_VAR && find_local(c, t->name) == NULL && i < fam; i++)
+    if (strcmp(m->families[i].name, t->name) == 0 && !m->families[i].cofamily)
+      layer = i;
+  if (n != p || layer == fam)
+    return FAIL(c, "CODATA_FORM", "the body of %s must be a domain family at the parameters of %s, in order", d->name, d->name);
+  return cofamily_layer(c, d, fam, layer);
 }
 
 static int check_def(Checker *c, const Decl *d) {
@@ -3973,6 +4156,154 @@ static int check_cell(Checker *c, const Decl *d) {
   return 1;
 }
 
+/* The field type of the observation T of a 0-cocell over the carrier X
+   (S4 K1, K2): T itself when T does not name X, Y for X, and
+   `A1 -> ... -> An -> Y` for `A1 -> ... -> An -> X`. NULL when X is at an
+   other place. */
+static const Term *cocell_field_type(Checker *c, const Ctor *op, const Term *t, const char *x, const Term *y) {
+  const Term *r;
+  if (!term_names(t, x))
+    return t;
+  if (is_carrier(t, x))
+    return y;
+  if (t->kind != TERM_PI || term_names(t->left, x) || (t->name != NULL && strcmp(t->name, x) == 0))
+    return NULL;
+  r = cocell_field_type(c, op, t->right, x, y);
+  return r == NULL ? NULL : made_term(c, op, TERM_PI, t->name, t->left, r);
+}
+
+/* The field of the layer node for the observation T, the component K of
+   the 0-cocell OP (S4 K2). NAME is the field name; NULL gives the name
+   OP.K. */
+static int cocell_field(Checker *c, const Ctor *op, const Term *t, const char *name, size_t k, const char *x, const Term *y, Field *out) {
+  size_t name_len = strlen(op->name) + 24u;
+  char *made = name == NULL ? arena_alloc(c->m->arena, name_len) : NULL;
+  const Term *ft = cocell_field_type(c, op, t, x, y);
+  if (ft == NULL)
+    return c->m->diag->set ? 0 : FAIL(c, "CODATA_POSITIVE", "the carrier %s must be the observation of the 0-cocell %s, a component of it, or the codomain of a function in it", x, op->name);
+  if (name == NULL && made == NULL)
+    return FAIL(c, "OOM", "out of memory");
+  if (made != NULL)
+    snprintf(made, name_len, "%s.%zu", op->name, k);
+  out->name = made != NULL ? made : name;
+  out->type = ft;
+  out->line = t->line;
+  out->col = t->col;
+  return 1;
+}
+
+/* The fields of the 0-cocell OP from its type `X -> T` (S4 K1, K2), from
+   the field K of the node on: one field with the name OP for T, or for a
+   Sigma `(a : A) * T'` the field a for A and then the fields of T'. A
+   field name is a global owner (rule R4). */
+static int cocell_fields(Checker *c, const Ctor *op, const char *x, const Term *y, Field *fields, size_t *k) {
+  const Term *t;
+  size_t pos = 1;
+  for (t = op->result->right; t->kind == TERM_SIGMA; t = t->right, pos++, (*k)++) {
+    if (t->name != NULL && strcmp(t->name, x) == 0)
+      return FAIL(c, "CODATA_POSITIVE", "the component %s of the 0-cocell %s has the name of the carrier", t->name, op->name);
+    if (!cocell_field(c, op, t->left, t->name, pos, x, y, &fields[*k]))
+      return 0;
+  }
+  if (!cocell_field(c, op, t, op->name, pos, x, y, &fields[*k]))
+    return 0;
+  (*k)++;
+  return 1;
+}
+
+/* A cocell (S4 K1, K2): the layer family NAME.layer PARAMS NAME.Y with
+   the one constructor nodeNAME (NAME.extract : X) and the fields of each
+   0-cocell, X the carrier (the last parameter) replaced by NAME.Y; then
+   the cofamily NAME PARAMS of that layer (cofamily_layer). A program
+   cannot name NAME.extract; `extract` at a cocell type gives it (K2).
+   nodeNAME is a surface name (USER 2026-10-23), thus the step of an
+   unfold can make a node. */
+static int check_cocell(Checker *c, const Decl *d) {
+  Machine *m = c->m;
+  const Field *carrier = d->param_count > 0u ? &d->params[d->param_count - 1u] : NULL;
+  const char *x = carrier != NULL ? carrier->name : NULL;
+  Decl *e = arena_alloc(m->arena, sizeof *e);
+  Decl *h = arena_alloc(m->arena, sizeof *h);
+  Ctor *node = arena_alloc(m->arena, sizeof *node);
+  Field *params = arena_alloc(m->arena, (d->param_count + 1u) * sizeof *params);
+  size_t name_len = strlen(d->name) + sizeof ".extract";
+  char *layer_name = arena_alloc(m->arena, name_len);
+  char *node_name = arena_alloc(m->arena, name_len);
+  char *extract_name = arena_alloc(m->arena, name_len);
+  char *y_name = arena_alloc(m->arena, name_len);
+  Field *fields;
+  const Term *y;
+  size_t n = 1;
+  size_t k = 1;
+  size_t i;
+  size_t j;
+  uint32_t layer;
+  uint32_t fam;
+  m->def = d->name;
+  if (carrier == NULL || carrier->type->kind != TERM_UNIV || carrier->type->nat != 0u)
+    return FAIL(c, "CELL_CARRIER", "the last parameter of the cocell %s must be the carrier, of type Type 0", d->name);
+  if (e == NULL || h == NULL || node == NULL || params == NULL || layer_name == NULL || node_name == NULL || extract_name == NULL || y_name == NULL)
+    return FAIL(c, "OOM", "out of memory");
+  for (i = 0; i < d->ctor_count; i++) {
+    const Term *t = d->ctors[i].result;
+    if (strcmp(d->ctors[i].name, "extract") == 0)
+      return FAIL(c, "COCELL_EXTRACT", "extract is the implicit 0-cocell of each cocell; a 0-cocell cannot have the name extract");
+    for (j = 0; j < i; j++)
+      if (strcmp(d->ctors[i].name, d->ctors[j].name) == 0)
+        return FAIL(c, "CELL_DUPLICATE", "%s is already a 0-cocell of the cocell %s", d->ctors[i].name, d->name);
+    if (t->kind != TERM_PI || !is_carrier(t->left, x) || (t->name != NULL && term_names(t->right, t->name)))
+      return FAIL(c, "COCELL_DOMAIN", "the type of the 0-cocell %s must start with the carrier %s ->", d->ctors[i].name, x);
+    for (t = t->right; t->kind == TERM_SIGMA; t = t->right)
+      n++;
+    n++;
+  }
+  snprintf(layer_name, name_len, "%s.layer", d->name);
+  snprintf(node_name, name_len, "node%s", d->name);
+  snprintf(extract_name, name_len, "%s.extract", d->name);
+  snprintf(y_name, name_len, "%s.Y", d->name);
+  fields = arena_alloc(m->arena, n * sizeof *fields);
+  if (fields == NULL)
+    return FAIL(c, "OOM", "out of memory");
+  y = made_term(c, &d->ctors[0], TERM_VAR, y_name, NULL, NULL);
+  fields[0].name = extract_name;
+  fields[0].type = made_term(c, &d->ctors[0], TERM_VAR, x, NULL, NULL);
+  fields[0].line = carrier->line;
+  fields[0].col = carrier->col;
+  if (y == NULL || fields[0].type == NULL)
+    return 0;
+  for (i = 0; i < d->ctor_count; i++)
+    if (!cocell_fields(c, &d->ctors[i], x, y, fields, &k))
+      return 0;
+  for (i = 0; i < d->param_count; i++)
+    params[i] = d->params[i];
+  params[d->param_count] = (Field){ .name = y_name, .type = carrier->type, .line = carrier->line, .col = carrier->col };
+  *node = (Ctor){
+    .name = node_name, .fields = fields, .field_count = n, .result = NULL, .boundary = NULL,
+    .line = d->ctors[0].line, .col = d->ctors[0].col,
+  };
+  *e = *d;
+  e->kind = DECL_FAMILY;
+  e->name = layer_name;
+  e->params = params;
+  e->param_count = d->param_count + 1u;
+  e->index = NULL;
+  e->ctors = node;
+  e->ctor_count = 1u;
+  e->block_count = 1u;
+  layer = m->family_count;
+  if (!check_family(c, e))
+    return 0;
+  *h = *d;
+  h->kind = DECL_COFAMILY;
+  h->ctors = NULL;
+  h->ctor_count = 0;
+  fam = m->family_count;
+  if (!check_header(c, h, fam, fam, 1u, 0u) || !cofamily_layer(c, h, fam, layer))
+    return 0;
+  m->families[fam].cocell = 1;
+  return 1;
+}
+
 static int check_decl(Checker *c, const Decl *d) {
   if (d->kind == DECL_FAMILY && d->origin == ORIGIN_PROGRAM)
     return FAIL(c, "REFUSE_DATA", "a program cannot declare a family (rule R1); only domain/domain.lang can, and a program can declare a cell");
@@ -3988,6 +4319,8 @@ static int check_decl(Checker *c, const Decl *d) {
     return 0;
   if (d->kind == DECL_COFAMILY)
     return check_cofamily(c, d);
+  if (d->kind == DECL_COCELL)
+    return check_cocell(c, d);
   if (d->kind == DECL_CELL)
     return check_cell(c, d);
   return d->kind == DECL_FAMILY ? check_family(c, d) : check_def(c, d);
@@ -3996,21 +4329,25 @@ static int check_decl(Checker *c, const Decl *d) {
 int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
   Checker c;
   size_t ctors = 0;
+  size_t cocells = 0;
   size_t i;
   memset(m, 0, sizeof *m);
   m->arena = arena;
   m->diag = diag;
   m->fuel = EVAL_FUEL_STEPS;
-  for (i = 0; i < decls->count; i++)
-    /* A cell also gets its implicit pure constructor (check_cell). */
+  for (i = 0; i < decls->count; i++) {
+    /* A cell also gets its implicit pure constructor (check_cell). A
+       cocell makes two families, the layer and the cofamily (check_cocell). */
     ctors += decls->items[i].ctor_count + (decls->items[i].kind == DECL_CELL ? 1u : 0u);
+    cocells += decls->items[i].kind == DECL_COCELL ? 1u : 0u;
+  }
   m->defs = arena_alloc(arena, (decls->count + 1u) * sizeof *m->defs);
-  m->families = arena_alloc(arena, (decls->count + 1u) * sizeof *m->families);
+  m->families = arena_alloc(arena, (decls->count + cocells + 1u) * sizeof *m->families);
   m->ctors = arena_alloc(arena, (ctors + 1u) * sizeof *m->ctors);
   if (m->defs == NULL || m->families == NULL || m->ctors == NULL)
     return diag_fail(diag, "OOM", NULL, "out of memory");
   m->def_cap = (uint32_t)decls->count;
-  m->family_cap = (uint32_t)decls->count;
+  m->family_cap = (uint32_t)(decls->count + cocells);
   m->ctor_cap = (uint32_t)ctors;
   memset(&c, 0, sizeof c);
   c.m = m;
@@ -4028,6 +4365,11 @@ int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
     m->def = decls->items[i].name;
     if (!check_decl(&c, &decls->items[i]))
       return 0;
+    /* The slot counts above must cover each declaration. A short count
+       writes into the next arena block, so stop at the first declaration
+       that goes past a count. */
+    if (m->family_count > m->family_cap || m->ctor_count > m->ctor_cap || m->def_count > m->def_cap)
+      return diag_fail(diag, "INTERNAL", m->def, "the checker used more slots than check_program reserves");
     /* The other sorts of a block are checked with its first sort (S6). */
     i += decls->items[i].kind == DECL_FAMILY && decls->items[i].block_count > 1u ? decls->items[i].block_count - 1u : 0u;
   }

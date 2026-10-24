@@ -1,0 +1,7 @@
+-- The bisimulation rule (S4 K5 (a)) checks the two steps at one fresh
+-- seed x. The heads agree (x), but the child seeds are `succ x` and
+-- `succ (succ x)`, and the hypothesis needs the same relation for the
+-- children. Thus refl does not have these ends at a variable seed n.
+def natsK : Nat -> StreamK Nat := fun (n : Nat) => unfold (fun (m : Nat) => nodeStreamK Nat Nat m (succ m)) n
+def evensK : Nat -> StreamK Nat := fun (n : Nat) => unfold (fun (m : Nat) => nodeStreamK Nat Nat m (succ (succ m))) n
+def same : (n : Nat) -> Path (StreamK Nat) (natsK n) (evensK n) := fun n => refl

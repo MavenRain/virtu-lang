@@ -1,0 +1,3 @@
+-- An expected Type 0 carrier must also reject a function into Type 1.
+def badExtendHint : StreamK Nat -> StreamK Nat :=
+  fun w => extend (fun s => Type 0) w

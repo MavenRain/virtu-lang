@@ -86,6 +86,89 @@ static int out_fuel(void) {
   return ok;
 }
 
+/* S4 chunk B, K10 R7: each check of the bisimulation rule spends 1 fuel.
+   The case is unfold g w against the variable w, with g = fun s => out s
+   (eta). The parts are measured through the API: the seed and result
+   types, the final seed comparison; g x,
+   the first layer; the head and tail projections of the two layers (the
+   cost of shead (out s) less the cost of out s); the conversion of each
+   field at the level of the check. The second layer is out x by
+   reduce_out: x is a neutral, so it is stuck before the spend and costs
+   0 (the API cannot call reduce_out alone). The full cost is 1 for the
+   conv_loop iteration, 1 for the check, and the parts. At 1 step short
+   the conversion traps. */
+static int bisim_fuel(void) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  const Value *w, *x, *u, *h1, *h2, *t1, *t2;
+  uint64_t types = 0u, seeds = 0u, app = 0u, step = 0u, ph = 0u, pt = 0u, head = 0u, tail = 0u, t = 0u, model = 0u;
+  int ok;
+  cases_run++;
+  arena_init(&arena, (size_t)128 << 20);
+  ok = checked(&arena, &m, &diag,
+    "def eta : Stream Nat -> Stream Nat := fun (w : Stream Nat) => unfold (fun (s : Stream Nat) => out s) w\n"
+    "def step : Stream Nat -> StreamF Nat (Stream Nat) := fun (s : Stream Nat) => out s\n"
+    "def hd : Stream Nat -> Nat := fun (s : Stream Nat) => shead (out s)\n"
+    "def tl : Stream Nat -> Stream Nat := fun (s : Stream Nat) => stail (out s)\n");
+  w = ok ? val_var(&m, 0u) : NULL;
+  x = ok ? val_var(&m, 1u) : NULL;
+  u = w != NULL ? apply_value(&m, def_value(&m, m.def_count - 4u), w) : NULL;
+  ok = u != NULL && x != NULL && val_is(u, OP_COUNFOLD) && u->argc == 2u;
+  h1 = ok ? apply_value(&m, def_value(&m, m.def_count - 2u), x) : NULL;
+  h2 = ok ? apply_value(&m, def_value(&m, m.def_count - 2u), x) : NULL;
+  t1 = ok ? apply_value(&m, def_value(&m, m.def_count - 1u), x) : NULL;
+  t2 = ok ? apply_value(&m, def_value(&m, m.def_count - 1u), x) : NULL;
+  ok = ok && h1 != NULL && h2 != NULL && t1 != NULL && t2 != NULL;
+  if (ok) {
+    m.fuel = EVAL_FUEL_STEPS;
+    ok = conv_values(&m, 1u, u->arg, u->dom);
+    types = EVAL_FUEL_STEPS - m.fuel;
+    m.fuel = EVAL_FUEL_STEPS;
+    ok = ok && conv_values(&m, 1u, w, w);
+    seeds = EVAL_FUEL_STEPS - m.fuel;
+    m.fuel = EVAL_FUEL_STEPS;
+    ok = ok && apply_value(&m, u->args[0], x) != NULL;
+    app = EVAL_FUEL_STEPS - m.fuel;
+    m.fuel = EVAL_FUEL_STEPS;
+    ok = ok && apply_value(&m, def_value(&m, m.def_count - 3u), x) != NULL;
+    step = EVAL_FUEL_STEPS - m.fuel;
+    m.fuel = EVAL_FUEL_STEPS;
+    ok = ok && apply_value(&m, def_value(&m, m.def_count - 2u), x) != NULL;
+    ph = EVAL_FUEL_STEPS - m.fuel - step;
+    m.fuel = EVAL_FUEL_STEPS;
+    ok = ok && apply_value(&m, def_value(&m, m.def_count - 1u), x) != NULL;
+    pt = EVAL_FUEL_STEPS - m.fuel - step;
+    m.fuel = EVAL_FUEL_STEPS;
+    ok = ok && conv_values(&m, 2u, h1, h2);
+    head = EVAL_FUEL_STEPS - m.fuel;
+    m.fuel = EVAL_FUEL_STEPS;
+    ok = ok && conv_values(&m, 2u, t1, t2);
+    tail = EVAL_FUEL_STEPS - m.fuel;
+    m.fuel = EVAL_FUEL_STEPS;
+    ok = ok && conv_values(&m, 1u, u, w);
+    t = EVAL_FUEL_STEPS - m.fuel;
+    model = 2u + types + seeds + app + 2u * (ph + pt) + head + tail;
+    ok = ok && t == model;
+  }
+  if (ok) {
+    m.fuel = t;
+    ok = conv_values(&m, 1u, u, w);
+  }
+  if (ok) {
+    m.fuel = t - 1u;
+    ok = !conv_values(&m, 1u, u, w) && diag.set && strcmp(diag.code, "EVAL_FUEL") == 0;
+  }
+  if (!ok) {
+    fprintf(stderr, "FAIL the bisimulation check spends 1 fuel (t %llu, model %llu: types %llu, seeds %llu, g x %llu, head proj %llu, tail proj %llu, head %llu, tail %llu)\n",
+      (unsigned long long)t, (unsigned long long)model, (unsigned long long)types, (unsigned long long)seeds, (unsigned long long)app,
+      (unsigned long long)ph, (unsigned long long)pt, (unsigned long long)head, (unsigned long long)tail);
+    diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
 static int accepts(const char *label, const char *source) {
   cases_run++;
   Arena arena;
@@ -875,19 +958,21 @@ int main(void) {
   failed += !roundtrip("decEqNat at different big Nats of the same width",
     "def r : Sum (Path Nat 18446744073709551616 18446744073709551617) "
     "(Path Nat 18446744073709551616 18446744073709551617 -> Empty) := decEqNat 18446744073709551616 18446744073709551617\n");
-  failed += !roundtrip("decEqNat at a big Nat and a word with the same limb count",
-    "def r : Sum (Path Nat 18446744073709551616 3) "
-    "(Path Nat 18446744073709551616 3 -> Empty) := decEqNat 18446744073709551616 3\n");
-  failed += !roundtrip("an unfold with a big bound can terminate immediately",
-    "def r : List Nat := unfold (fun (s : Nat) => none) (natAdd 18446744073709551615 1) 0\n");
-  failed += !roundtrip("a neutral unfold retains its big bound",
+  /* The removed bounded List unfold stays refused at big and neutral
+     bounds, including the former partial-evaluation case. */
+  failed += !domain_refuses("the removed bounded unfold refuses a big bound", "",
+    "def r : List Nat := unfold (fun (s : Nat) => none) (natAdd 18446744073709551615 1) 0\n", "TYPE_INFER");
+  failed += !domain_refuses("the removed bounded unfold refuses a neutral step", "",
     "def r : (Nat -> Option (Prod Nat Nat)) -> List Nat := fun (step : Nat -> Option (Prod Nat Nat)) => "
-    "unfold step 18446744073709551616 0\n");
-  failed += !accepts("a partially evaluated unfold decrements its big bound",
+    "unfold step 18446744073709551616 0\n", "TYPE_INFER");
+  failed += !domain_refuses("the removed bounded unfold refuses a partially evaluated step", "",
     "def r : (step : Nat -> Option (Prod Nat Nat)) -> Path (List Nat) "
     "(unfold (fun (s : Nat) => finCase 2 (natEq s 0) (step s) (some (pair 7 1))) 18446744073709551616 0) "
     "(cons 7 (unfold (fun (s : Nat) => finCase 2 (natEq s 0) (step s) (some (pair 7 1))) 18446744073709551615 1)) "
-    ":= fun (step : Nat -> Option (Prod Nat Nat)) => refl\n");
+    ":= fun (step : Nat -> Option (Prod Nat Nat)) => refl\n", "TYPE_INFER");
+  failed += !roundtrip("decEqNat at a big Nat and a word with the same limb count",
+    "def r : Sum (Path Nat 18446744073709551616 3) "
+    "(Path Nat 18446744073709551616 3 -> Empty) := decEqNat 18446744073709551616 3\n");
   failed += !big_fold_fuel();
   failed += !accepts("big arithmetic carries and borrows through every limb",
     "def a : Path Nat (succ 79228162514264337593543950335) 79228162514264337593543950336 := refl\n"
@@ -985,6 +1070,7 @@ int main(void) {
     "def moved : (A : Type 0) -> (B : Type 0) -> Path (Type 0) A B -> Stream A -> Stream B := "
     "fun (A : Type 0) (B : Type 0) (p : Path (Type 0) A B) (s : Stream A) => transp (fun (i : I) => Stream (p @ i)) i0 s\n");
   failed += !out_fuel();
+  failed += !bisim_fuel();
   /* S4 chunk C: refl after eval. */
   failed += !accepts("unfold: refl of two unfolds after a take",
     "def zerosA : Stream Nat := unfold (fun (n : Nat) => scons Nat Nat 0 n) 0\n"
@@ -996,6 +1082,106 @@ int main(void) {
   failed += !domain_refuses("unfold: refl of g at 0 and g at 1 after eval", "",
     "def g : Nat -> StreamF Nat Nat := fun (n : Nat) => scons Nat Nat n (succ n)\n"
     "def bad : Path (Stream Nat) (unfold g (natSub 1 1)) (unfold g (natAdd 0 1)) := refl\n", "PATH_END");
+  failed += !domain_accepts("cofamily: both constructors retain out computation and reflexivity",
+    "family TwoF (X : Type 0) := zeroF | oneF (n : Nat)\ncofamily Two := TwoF\n",
+    "def a : Two := unfold (fun (s : Nat) => zeroF Nat) 0\n"
+    "def b : Two := unfold (fun (s : Nat) => oneF Nat 1) 0\n"
+    "def sameA : Path Two a a := refl\n"
+    "def sameB : Path Two b b := refl\n"
+    "def outA : Path (TwoF Two) (out a) (zeroF Two) := refl\n"
+    "def outB : Path (TwoF Two) (out b) (oneF Two 1) := refl\n");
+  failed += !domain_refuses("cofamily: conversion preserves distinct layer constructor tags",
+    "family TwoF (X : Type 0) := zeroF | oneF (n : Nat)\ncofamily Two := TwoF\n",
+    "def a : Two := unfold (fun (s : Nat) => zeroF Nat) 0\n"
+    "def b : Two := unfold (fun (s : Nat) => oneF Nat 1) 0\n"
+    "def bad : Path Two a b := refl\n", "PATH_END");
+  failed += !domain_refuses("cofamily: a sum layer does not admit record eta",
+    "family TwoF (X : Type 0) := zeroF | oneF (n : Nat)\ncofamily Two := TwoF\n",
+    "def bad : (w : Two) -> Path (TwoF Two) (zeroF Two) (out w) := fun w => refl\n", "PATH_END");
+  failed += !domain_refuses("cofamily: a constant constructor step is not eta for a sum",
+    "family TwoF (X : Type 0) := zeroF | oneF (n : Nat)\ncofamily Two := TwoF\n",
+    "def bad : (w : Two) -> Path Two (unfold (fun (s : Two) => zeroF Two) w) w := fun w => refl\n", "PATH_END");
+  failed += !domain_accepts("cofamily: finite observations can agree at different seed types",
+    "family OneF (X : Type 0) := oneL (n : Nat)\ncofamily One := OneF\n",
+    "def a : One := unfold (fun (s : Nat) => oneL Nat 7) 0\n"
+    "def b : One := unfold (fun (s : Unit) => oneL Unit 7) unit\n"
+    "def same : Path One a b := refl\n"
+    "def observed : Path (OneF One) (out b) (oneL One 7) := refl\n");
+  /* S4 chunk B: the cocells (K4, K6, the K8 killers, K5 (a) at a
+     variable). A refused layer is extra domain text. */
+  failed += !domain_refuses("cofamily: a Pi chain field with X under List (c1)",
+    "family KidsF (A : Type 0) (X : Type 0) := kidsF (kidsLabel : A) (kids : Nat -> List X)\n"
+    "cofamily Kids (A : Type 0) := KidsF A\n", "", "CODATA_POSITIVE");
+  failed += !domain_refuses("cofamily: a parameter in Type 1 against a layer parameter in Type 0 (c6)",
+    "family BadF (A : Type 0) (X : Type 0) := badF (badNext : X)\n"
+    "cofamily Bad (A : Type 1) := BadF A\n", "", "CODATA_FORM");
+  failed += !domain_refuses("cofamily: a layer in a block",
+    "family BlkF (A : Type 0) (X : Type 0) := blkF (blkNext : X) and BlkG (A : Type 0) (X : Type 0) := blkG\n"
+    "cofamily Blk (A : Type 0) := BlkF A\n", "", "CODATA_FORM");
+  failed += !roundtrip("cocell: the unfold of StreamK prints and checks again",
+    "def natsK : StreamK Nat := unfold (fun (n : Nat) => nodeStreamK Nat Nat n (succ n)) 0\n");
+  failed += !roundtrip("cocell: the unfold of EnvK prints and checks again",
+    "def env : EnvK Nat Nat := unfold (fun (u : Prod Nat Nat) => nodeEnvK Nat Nat (Prod Nat Nat) (first u) (second u)) (pair 4 7)\n");
+  failed += !roundtrip("cocell: the unfold of CofreeK prints and checks again",
+    "def tree : CofreeK Nat (fun (a : Nat) => Nat) Nat := "
+    "unfold (fun (n : Nat) => nodeCofreeK Nat (fun (a : Nat) => Nat) Nat Nat n (succ n) (fun (k : Nat) => natAdd n k)) 1\n");
+  failed += !accepts("cocell: Cofree L1 at a variable",
+    "def cofreeL1 : (A : Type 0) -> (B : A -> Type 0) -> (X : Type 0) -> (C : Type 0) -> (f : CofreeK A B X -> C) -> "
+    "(w : CofreeK A B X) -> Path C (extract (extend f w)) (f w) := fun A B X C f w => refl\n");
+  failed += !accepts("cocell: a cocell after a cell has its own family slots",
+    "cell Twice (X : Type 0) := twice : X -> X\n"
+    "cocell PeekK (X : Type 0) := peekK : X -> Nat\n"
+    "def p : PeekK Nat := unfold (fun (n : Nat) => nodePeekK Nat Nat n (natAdd n n)) 3\n"
+    "def e : Path Nat (extract p) 3 := refl\n"
+    "def v : Path Nat (peekK (out p)) 6 := refl\n");
+  /* Each def of domain/domain.lang gives a spare family slot (46 at S4), so
+     the slot count for cocells needs more cocells than that (R5). */
+  {
+    static char many[4096];
+    size_t used = 0;
+    unsigned k;
+    for (k = 0; k < 64u; k++)
+      used += (size_t)snprintf(many + used, sizeof many - used, "cocell K%u (X : Type 0) := k%u : X -> Nat\n", k, k);
+    failed += !accepts("cocell: 64 cocells have their family slots (R5)", many);
+  }
+  failed += !accepts("cocell: PropEnvK, the coreflection P * - at a proposition (K6)",
+    "cocell PropEnvK (P : Type 0) (pp : isProp P) (X : Type 0) := askP : X -> P\n"
+    "def penv : PropEnvK (Not Empty) (isPropNot Empty) Nat := "
+    "unfold (fun (n : Nat) => nodePropEnvK (Not Empty) (isPropNot Empty) Nat Nat n (fun (e : Empty) => e)) 5\n"
+    "def next : Path Nat (extract (extend (fun (w : PropEnvK (Not Empty) (isPropNot Empty) Nat) => succ (extract w)) penv)) 6 := refl\n"
+    "def propL2 : (P : Type 0) -> (pp : isProp P) -> (X : Type 0) -> (w : PropEnvK P pp X) -> "
+    "Path (PropEnvK P pp X) (extract (duplicate w)) w := fun P pp X w => refl\n");
+  failed += !accepts("bisimulation rule: eta at a variable",
+    "def eta : (w : Stream Nat) -> Path (Stream Nat) (unfold (fun (s : Stream Nat) => out s) w) w := fun w => refl\n");
+  failed += !accepts("bisimulation rule: L3 at a variable",
+    "def streamL3 : (X : Type 0) -> (w : StreamK X) -> Path (StreamK X) (extend extract w) w := fun X w => refl\n");
+  failed += !domain_refuses("bisimulation rule: coassociativity needs more than seed-preserving conversion", "",
+    "def streamCo : (X : Type 0) -> (w : StreamK X) -> Path (StreamK (StreamK (StreamK X))) "
+    "(extend duplicate w) (duplicate (duplicate w)) := fun X w => refl\n", "PATH_END");
+  failed += !domain_refuses("bisimulation rule: unequal variable seeds do not infer a graph", "",
+    "def g : Nat -> StreamF Nat Nat := fun (n : Nat) => scons Nat Nat 0 n\n"
+    "def ab : (n : Nat) -> Path (Stream Nat) (unfold g (succ n)) (unfold g n) := fun n => refl\n", "PATH_END");
+  failed += !domain_refuses("bisimulation rule: the mirror graph is also refused", "",
+    "def g : Nat -> StreamF Nat Nat := fun (n : Nat) => scons Nat Nat 0 n\n"
+    "def bc : (n : Nat) -> Path (Stream Nat) (unfold g n) (unfold g (natAdd n 2)) := fun n => refl\n", "PATH_END");
+  failed += !domain_refuses("bisimulation rule: the nonvariable graph pair stays refused", "",
+    "def g : Nat -> StreamF Nat Nat := fun (n : Nat) => scons Nat Nat 0 n\n"
+    "def ac : (n : Nat) -> Path (Stream Nat) (unfold g (succ n)) (unfold g (natAdd n 2)) := fun n => refl\n", "PATH_END");
+  failed += !domain_refuses("bisimulation rule: a closed graph pair is refused consistently", "",
+    "def g : Nat -> StreamF Nat Nat := fun (n : Nat) => scons Nat Nat 0 n\n"
+    "def closed : Path (Stream Nat) (unfold g 1) (unfold g 0) := refl\n", "PATH_END");
+  failed += !roundtrip("bisimulation rule: seed-preserving eta specializes to a closed seed",
+    "def g : Nat -> StreamF Nat Nat := fun (n : Nat) => scons Nat Nat n (succ n)\n"
+    "def eta : (w : Stream Nat) -> Path (Stream Nat) (unfold (fun (s : Stream Nat) => out s) w) w := fun w => refl\n"
+    "def closed : Path (Stream Nat) (unfold (fun (s : Stream Nat) => out s) (unfold g 0)) (unfold g 0) := eta (unfold g 0)\n"
+    "def direct : Path (Stream Nat) (unfold (fun (s : Stream Nat) => out s) (unfold g 0)) (unfold g 0) := refl\n");
+  failed += !domain_refuses("cocell: a program def with the node name nodeStreamK (ruling 2026-10-23)", "",
+    "def nodeStreamK : Nat := 0\n", "REFUSE_NAME");
+  /* S4 open point 3: an hcomp at a cofamily is stuck (hcomp_stuck, a
+     neutral; only a HIT gets the formal hcomp), so the rule applies by eta,
+     as for a transp neutral. K11 predicted the rule off. */
+  failed += !accepts("bisimulation rule: eta for an hcomp at a cofamily",
+    "def hp : (w : Stream Nat) -> Path (Path (Stream Nat) w w) (fun (j : I) => unfold (fun (s : Stream Nat) => out s) (hcomp (Stream Nat) (~j \\/ j) (fun (i : I) => [ ~j -> w, j -> w ]) w)) (fun (j : I) => hcomp (Stream Nat) (~j \\/ j) (fun (i : I) => [ ~j -> w, j -> w ]) w) := fun w => refl\n");
   printf("path regressions: %d checked, %d failed\n", cases_run, failed);
   return failed != 0;
 }

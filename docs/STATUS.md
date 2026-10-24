@@ -333,3 +333,131 @@ Survivors:
   checks that a square case with an unequal path face still gives PATH_UIP.
 - The review gate passes with 167 path regressions. The other S3 gate
   counts above stay the same. No test or CI check was removed or weakened.
+
+## S4
+The initial candidate and its gate evidence are recorded below. The current implementation includes the corrections in [Staged review corrections](#staged-review-corrections), especially the narrower conversion rule.
+
+
+
+S4 adds the `cocell` declaration, the dual of `cell`. A cocell makes a layer family and a cofamily, with the comonad builtins `extract`, `extend` and `duplicate`. The kickoff rulings K1 to K12 are all (a) (docs/PLAN.md, `### USER ruling (S4 kickoff)`, 2026-10-23). A USER ruling of 2026-10-23 changes K2 for the name of the node (D1). A USER ruling of 2026-10-23 (R5 (a)) adds the slot guard (Kernel changes). The claims C13 to C17 are in ~/Documents/virtu-lang-work/S4-claims.md (outside the repo).
+
+### Gate
+
+`make -B -j 2 check` exits 0 (~/Documents/virtu-lang-work/s7b/gate-s11-close.log).
+
+| gate line | S3 (pin) | K11 | S4 | difference and cause |
+|---|---|---|---|---|
+| examples | 35 | 36 | 36 | +1: examples/cocell.lang |
+| parse refusals | 15 | 16 | 16 | +1: test/parse/cocell-no-ops.lang |
+| check refusals | 93 | 101 | 101 | +8: 8 files in test/check (Added tests) |
+| evals | 145 | about 155 | 158 | -1: K7 removes the algebra row `stop` (`down` keeps its golden with `take`); +14: the cocell rows |
+| build | 35 | 36 | 36 | +1: test/json/cocell.json |
+| build refusals | 5 | 5 | 5 | none |
+| regressions | 6 | 6 | 6 | none |
+| printer regressions | 2 | 2 | 2 | none |
+| path regressions | 167 | 178 | 180 | -3: K7 removes the 3 rows of the kit `unfold` into `List`; +16 rows (Added tests) |
+
+The S3 table gives 164 path regressions. The S3 review fixes add 3 rows, so the pin f43c4b7 has 167 (K11). Two lines differ from K11:
+
+- evals: 158, not about 155. examples/cocell.lang has 14 eval rows, not about 12, and the algebra change is -1, not -2.
+- path regressions: 180, not 178. The 2 extra rows are the D1 ruling row (a program `def nodeStreamK` gives REFUSE_NAME) and the R5 killer row (Mutants (K10)). K11 counted "transp and hcomp keep the rule off" as one row; that row is the hcomp accepts row (D4).
+
+### K rows
+
+- K1: `cocell` is a keyword (src/front/lexer.c, lexer.h). parse_cocell has the form of parse_cell (src/front/parser.c). A cocell with no op is PARSE_EXPECT.
+- K2: check_cocell (src/front/check.c) makes the layer family and the cofamily. cocell_fields splits a Sigma observation into 2 fields. The builtins `extract` (1), `extend` (2) and `duplicate` (1) make the canonical node in cocell_unfold: one projection of `out s` for each field after `extract`. check_program reserves 2 family slots for each cocell. The node is the surface constructor `nodeD` (D1).
+- K3: the type of the step is the guard. There is no new rule. test/check/unfold-kit.lang and unfold-no-hint.lang give TYPE_INFER.
+- K4: domain/domain.lang has the cocells EnvK, StreamK and CofreeK, the layer StoreF and `cofamily Store S A := StoreF S A`. examples/cocell.lang gives Store by hand (posT, peekT, seekT, exT) and the maps between `StreamK X` and `Stream X`.
+- K5: conv_counfold, conv_bisim, bisim_check and bisim_field (src/front/eval.c). A neutral converts with an unfold by eta. Two unfolds convert when the hypothesis (g1, g2, h) passes one check at a fresh variable. h is the identity when the seeds convert; else, with one seed a variable, h is the read back of the other seed with that variable abstracted. Each check spends 1 fuel. L3 and coassociativity at a variable are refl. The map form of coassociativity and test/check/codata-bisim.lang stay refused.
+- K6: PropEnvK with the parameter pair `(P : Type 0) (pp : isProp P)` is in examples/cocell.lang at `P = Not Empty`. The idempotence is open point 5.
+- K7: the kit `unfold` into `List` is removed (rule_unfold, OP_UNFOLD, json.c). examples/algebra.lang `down` uses `take`.
+- K8: the c1 killer (`kids : Nat -> List X`, CODATA_POSITIVE) and the c6 killer (`cofamily Bad (A : Type 1) := BadF A`, CODATA_FORM) are path regressions. CODATA_FORM for a layer in a block is a path regression (D3). test/check/unfold-no-hint.lang is the fixture for `unfold g s` with no hint. The K8 kernel items: (1) the D1 message of test/check/cell-pure-boundary.lang names the cell: `langc: TYPE_INFER: PB: pure needs a declared type Option A, List A, Sum E A or a cell type C ps here` (PB is the cell of the fixture). No change; test/check/expect.txt holds only the code (line 91). (2) path_case_type gives HIT_BOUNDARY when an end of the boundary does not compute (Kernel changes). The evidence: P4 (src/front/check.c:1388, `interval_count == 2u` to `3u`) with this check off makes examples/dec.lang and ncell.lang print `langc: (null): :`. P4 with the check names the constructor: dec toNat squash0, elim toTruncE quotSquash, ncell to0 squash0C, quot map0 squash0, state run stSquashC. The killers for P5, P10 and P10b: open point 8.
+- K9: the added tests below. There is no new node, Python or shell harness.
+- K10: the mutants R1 to R9 (`### Mutants (K10)`): 9 of 9 KILLED. R5 survived the first run; the USER ruling R5 (a) adds the slot guard and the R5 row.
+- K11: the gate above.
+- K12: the PLAN 2.3 edits (the Stream dual `Nat * X`, the Store row, the law sources).
+
+### Claims (S4-claims.md)
+
+- C13: each comonad of PLAN 2.3 is the cofree comonad of its cocells. CONFIRMED for Env, Stream and Cofree, with a correction to the Stream dual (`Nat * X`, K12). NOT CONFIRMED for Store (C14).
+- C14: the coalgebras of Store are the very well-behaved lenses. CONFIRMED. Store is the comonad of the costate co-operations with the lens laws as coequations. It is not the cofree comonad of the bare costate signature. Thus Store is a library comonad with a direct layer (K4).
+- C15: an M-type in HoTT is the final coalgebra of a polynomial functor, with coinduction. CONFIRMED (S4-claims.md source A, Definition 4, Theorem 7, Theorem 18).
+- C16: the coreflection `P * -`. CONFIRMED (S1 kickoff C2).
+- C17: in Cubical Agda, a path in a coinductive type comes from copatterns and corecursion over an interval variable, and bisimilarity is equivalent to path equality. CONFIRMED. Guarded CTT gives this for guarded types only. Claim gap: K5 (a) makes bisimilarity a judgmental conversion. This needs a strict final coalgebra in the model. No source for the cubical model was read (open point 10).
+
+### Kernel changes
+
+- src/front/lexer.c, lexer.h, ast.h, parser.c: the `cocell` keyword, DECL_COCELL and parse_cocell (K1).
+- src/front/check.c: check_cocell, cocell_fields, the BUILTINS rows `extract`, `extend` and `duplicate`, cocell_unfold, the 2 family slots in check_program, the node name `nodeD` (K2, D1); the removal of the kit `unfold` (K7).
+- src/front/core.h: the `cocell` flag; OP_UNFOLD is removed (K7).
+- src/front/eval.c: the bisimulation rule (K5); the removal of OP_UNFOLD (K7).
+- src/json.c: the removal of OP_UNFOLD (K7).
+- src/front/check.c: the slot guard in check_program (R5 (a), USER ruling 2026-10-23). When the checker uses more family, constructor or def slots than check_program reserves, check_program gives INTERNAL "the checker used more slots than check_program reserves" (check.c:4307 and 4308). Before, family_cap, ctor_cap and def_cap were not read.
+- src/front/check.c: path_case_type gives HIT_BOUNDARY "the case of the path constructor %s has no type: an end of its boundary does not compute" when an end of the boundary does not compute (check.c:1393 to 1395, K8 (2)).
+- domain/domain.lang: EnvK, StreamK, CofreeK, StoreF and Store (K4).
+- docs/PLAN.md: `### USER ruling (S4 kickoff)`, K12, and the D1 ruling in K2 (the node `nodeD`). formers/FORMERS.md and domain/README.md have no text on the `cell` declaration (the 3 FORMERS.md hits are table cells), thus they get no cocell text.
+
+### Added tests (K9)
+
+- examples/cocell.lang: EnvK, StreamK, CofreeK, Store by hand, PropEnvK, the maps between StreamK and Stream, and the laws L1, L2, L3 and coassociativity for StreamK, EnvK, CofreeK and Store (closed step), and PropEnvK L2.
+- test/parse/cocell-no-ops.lang (PARSE_EXPECT).
+- test/check: cocell-carrier.lang (CELL_CARRIER), cocell-extract.lang (COCELL_EXTRACT), cocell-domain.lang (COCELL_DOMAIN, an op with no `X ->`), cocell-positive.lang (CODATA_POSITIVE), unfold-kit.lang (TYPE_INFER), unfold-no-hint.lang (TYPE_INFER), cocell-nats-evens.lang (PATH_END, D2), cocell-map-coassoc.lang (PATH_END). The codes come from real runs.
+- test/check/codata-bisim.lang: a new comment gives the two reasons for the refusal (open point 6).
+- test/eval/expect.txt: 14 cocell rows: headK, thirdK, doubledK, sumsK, backSecond, roundList, envAsk, envSum, treeShape, treeChild, dblEx, dblSeek, dblNext, penvNext.
+- test/json/cocell.json (14 first-order instances, Nat and List Nat); test/json/algebra.json loses its kit unfold instance (K7).
+- test/path-regressions.c, 16 rows: the c1 and c6 killers, a layer in a block (CODATA_FORM), the round trips of StreamK, EnvK and CofreeK, Cofree L1 at a variable, a cocell after a cell, PropEnvK, eta at a variable, L3 at a variable, coassociativity at a variable, the D1 ruling row, the fuel row bisim_fuel (t = 11: success at t, EVAL_FUEL at t - 1), eta for an hcomp at a cofamily, and the R5 row "cocell: 64 cocells have their family slots (R5)" (64 cocells after the domain; on the R5 mutant the slot guard gives INTERNAL).
+
+### Deviations
+
+- D1 (K2): the node of a cocell D is the surface constructor `nodeD`, a core name under rule R4 (USER ruling 2026-10-23). K2 said "A program cannot write them". With a hidden node, a program cannot make a cocell value (s4 probes: TYPE_MISMATCH "expected StreamK.layer Nat (Stream Nat)"). `D.layer`, `D.extract` and `D.Y` stay hidden. A program `def nodeStreamK` gives REFUSE_NAME.
+- D2: test/check/cocell-nats-evens.lang uses a variable seed n (`natsK n` against `evensK n`). With the closed seed 0, no seed is a variable, so conv_bisim refuses before the hypothesis check, and the fixture does not test R6. The refusal comes from the child seeds `succ x` and `succ (succ x)`.
+- D3: CODATA_FORM for a layer in a block is a path regression, not a check fixture: a program cannot declare a layer (REFUSE_DATA).
+- D4: transp and hcomp at a cofamily get the rule by eta. K11 said "transp and hcomp keep the rule off". A transp at a line that changes is a neutral. At a type that is not a HIT, an hcomp is hcomp_stuck, a neutral for scrut_of; only a HIT gets the formal hcomp. Thus conv_counfold gives both eta. This is sound under the strict-final-coalgebra assumption (open point 10).
+- D5 (K10 R3): the R3 mutant is AS BUILT `cores[p + 1u] = ((void)head, s);` in cocell_unfold (src/front/check.c:1866): the node drops the head. It is not the "fold node" form of the kickoff, because a case on the layer has no one-line C form.
+
+### Open points (S4-build-PROMPT.md)
+
+1. Transitivity: NOT transitive. At StreamK (StreamK (StreamK X)), a = `extend extract (extend duplicate w)`, b = `extend duplicate w` and c = `duplicate (duplicate w)`. a = b passes (L3), b = c passes (coassociativity), a = c is PATH_END. The seeds of a = c are `extend duplicate w` and `duplicate w`. Neither seed is a variable and the seeds do not convert, so conv_bisim has no h. This is an incompleteness of the rule, not a soundness fault. USER question for S5.
+2. Termination: `extend (fun s => extend extract (extract s)) w` against w at `StreamK (StreamK Nat)` is accepted in 0.03 s. The check meets an unfold against a neutral in the extract field and calls the rule again (L3 at `extract x`). It ends under the fuel bound (each check spends 1).
+3. transp and hcomp at a cofamily: the rule applies by eta (D4).
+4. The read back with one variable abstracted. A seed with two variables: the swap stream (seed `pair x y`, step `scons (first p) (pair (second p) (first p))`) against `unfold (fun k => scons k k) x` is PATH_END, as it must be. The step that keeps `pair (first p) (second p)` converts, which is correct. A seed that is not a variable: the closed round trip `Path (Stream Nat) (toS Nat (toK Nat nats)) nats` is PATH_END (the seeds are `toK Nat nats` and 0); the same round trip at a variable passes.
+5. PropEnvK idempotence: `fun i => unfold (fun (s : X) => nodePropEnvK P pp X X s (pp p q @ i)) d` is a path between the values at p and at q. Accepted.
+6. The map form of coassociativity (test/check/cocell-map-coassoc.lang) is PATH_END. test/check/codata-bisim.lang stays PATH_END at the closed seed 0 (the rule does not apply) and at a variable seed n (the heads agree; the child seeds are n and `succ n`).
+7. An all-pairs hypothesis (fresh x and y, independent) is not in K5 (a), and no probe was run. It also closes codata-bisim.lang and could close the a = c case of open point 1. USER question for S5.
+8. The killers for P5, P10 and P10b (K8): one try for each (s10, ~/Documents/virtu-lang-work/s10b). The 3 mutants SURVIVED. S3 D4 (P5) and D7 (P10) stay open. P10 (src/front/check.c:937 cell_fold, drop the rebuild_ok call) and P10b (check.c:914 rebuild_ok, `if (m->ctors[inst].interval_count == 0u)` to `if (1)`): the try s10b/try/p10-try.lang maps `natAdd n 1` through the StateC law path gpC at a variable interval and binds through gpC. The base, P10 and P10b give rc 0. The cause is the S3 cause: cell_rebuild makes the case from the constructor, thus its ends are the boundary at the rebuilt fields, and this is the case type of rebuild_ok. A continuation field (gpC) does not change this. P5 (src/front/eval.c:1058 fold_square, swap `inner[0]` and `inner[1]`): the try s10b/try/p5-try.lang declares the cell Coher2 of the S3 review regression ("cell map preserves earlier path and square boundary cases") and folds with neutral cases. The case type holds the fold of c2s at (j, j), a stuck square fold in a quoted value. The base and P5 give rc 0. The cause: in a boundary face only one interval is free. At j = i0 or i1, the new evaluation makes the outer path (the CLOS_FOLD_FACE VAL_PLAM) concrete first, thus path_apply does not read the stored inner ends. The inner ends are read only when r1 stays neutral and r2 becomes an end with no new evaluation (val_isubst, glue_at, eval.c:2832). No program for this was found. Runners s10b/p-runs/s10-1-kill.zsh and s10-1-p5.zsh; each restore is cmp equal.
+9. The JSON form: test/json/cocell.json has the 14 first-order instances only. A cofamily value has no JSON form (src/json.c).
+10. Claim gap: a judgmental bisimulation rule needs a strict final coalgebra in the model. No source for the cubical model was read. It stays open (C17).
+### Staged review corrections
+
+The S4 gate table, K rows and mutant table elsewhere in this section record the initial candidate before staged review. The review makes these corrections:
+
+- HIGH: layer eta and the observation rule treated every cofamily layer as a record, although cofamily declarations allow several point constructors. For `TwoF X := zeroF | oneF (n : Nat)`, the rule inspected only the zero-field first constructor and accepted `Path Two (unfold zeroStep 0) (unfold oneStep 0) := refl`. It also equated a constant zero-constructor unfold with an arbitrary variable and equated that constructor with an arbitrary layer. Record eta and nonstructural unfold conversion now require exactly one layer constructor. Three refusal regressions cover these false paths; positive regressions retain reflexivity and `out` computation for both constructors.
+
+- HIGH: the graph conversion rule was not stable under substitution and was not transitive. With `g n = scons Nat Nat 0 n`, the variable-seed proofs relating `unfold g (succ n)`, `unfold g n` and `unfold g (natAdd n 2)` checked pairwise through the middle term, while the outer pair failed. Specializing the first accepted proof at zero checked, but direct `refl` at the same closed endpoints failed. The variable graph construction is removed. Recursive cofamilies now compare convertible seeds of the same type and check the identity relation uniformly. Typed eta contracts at closed seeds as well as neutrals. Finite cofamilies with no recursive Y field compare their observations directly, without a coinductive hypothesis. L1, L2, L3, Store laws and EnvK coassociativity still check. Full StreamK/CofreeK coassociativity and the two stream round trips are explicit refusal regressions; examples check their head projections. A stronger path or conversion rule remains future work. This replaces the characterization of open point 1 as harmless incompleteness.
+- HIGH: inferred `extend` and cocell `map` codomains could inhabit a higher universe, bypassing the carrier parameter's `Type 0` bound. The checker now rechecks the inferred codomain at `Type 0`, using full source readback with fresh local aliases. A private lexer entrypoint accepts generated dotted names during this internal replay. Public lexing keeps its existing refusal. Positive result-type examples and negative inferred, hinted, function, Sigma, neutral and dependent-result fixtures cover both operations.
+- Test coverage: `algebra stop => nil` and its JSON instance are restored using `take Nat 0`. The three removed bounded-List-unfold inputs are retained as refusal regressions for the intentionally removed syntax. The fuel regression still checks an independently measured cost and failure with one unit less, including the new type and final seed comparisons.
+
+The initial K10 mutant table is historical evidence for the pre-review candidate; its source line numbers and graph-rule sites do not describe the revised evaluator. The revised implementation is validated by a fresh full gate and targeted before/after probes recorded with this review. No commit is made by the review.
+
+The revised `make -j 2 check` exits 0: 37 examples, 16 parse refusals, 117 check refusals, 159 evals, 37 JSON builds, 5 build refusals, 6 host regressions, 2 printer regressions and 193 path regressions. TinyCC builds and the strict C99 syntax check with `-Wall -Wextra -Wswitch-enum -Werror` pass. Full capture: ~/Documents/gpt5/virtu-staged-review/staged/.kanon-exec/run-zoku8U. An independent final review recompiles the five-case two-constructor C probe and checks higher-universe refusals plus dependent Sigma, captured Path and internal-layer carrier examples. It reports no remaining medium-or-higher findings.
+
+### Mutants (K10)
+
+The runner ~/Documents/virtu-lang-work/S4-mutants.zsh (outside the repo) has the form of the S3 runner. It finds each site by a unique anchor text in the main checkout plus an offset, applies the mutant on a scratch copy and runs `make -B -j 2 check`. When the gate stops before the path regressions, the runner builds build/path-regressions again and runs it. Then it restores the file from the main checkout and compares the two files with cmp. Output: ~/Documents/virtu-lang-work/s7b/S4-mutants.out; logs: s7b/mlogs. Each restore is equal. The final gate on the scratch copy exits 0 (179 path regressions, before the R5 row), so each killer passes before and after. R5 has its own runs: s8b (the R5 (a) ruling and the slot guard) and s9b (the killer row; runner s9b/p-runs/s9-1-kill.zsh, logs s9b/logs). The lines are lines of the S4 work tree; they did not move after the run. Result: 9 of 9 KILLED; R5 is KILLED after the R5 (a) ruling.
+
+| id | site | mutation | killer | result |
+|---|---|---|---|---|
+| R1 | src/front/check.c:3868 codata_positive | `t = t->b, ix++` to `t = t->b` | path regression "cofamily: a Pi chain field with X under List (c1)" (CODATA_POSITIVE) | KILLED |
+| R2 | src/front/check.c:3889 cofamily_layer | `if (!conv_values(...))` to `if (0 && !conv_values(...))`: the parameter check is off | path regression "cofamily: a parameter in Type 1 against a layer parameter in Type 0 (c6)" (CODATA_FORM) | KILLED |
+| R3 | src/front/check.c:1866 cocell_unfold | `head == NULL ? s : core_app(...)` to `((void)head, s)` (D5) | examples/cocell.lang (PATH_END streamL1), test/check/cocell-map-coassoc.lang (exit 0), the cocell eval rows: 17 gate failures; 4 path regressions ("cocell: Cofree L1 at a variable", "cocell: PropEnvK, the coreflection P * - at a proposition (K6)", "bisimulation rule: L3 at a variable", "bisimulation rule: coassociativity at a variable") | KILLED |
+| R4 | src/front/check.c:4185 check_cocell | `if (strcmp(d->ctors[i].name, "extract") == 0)` to `if (0 && ...)` | test/check/cocell-extract.lang (REFUSE_NAME, not COCELL_EXTRACT): 1 gate failure | KILLED |
+| R5 | src/front/check.c:4278 check_program | `? 1u : 0u` to `? 0u : 0u`: 1 family slot for each cocell, not 2 | the first run: none, the gate exits 0 (the slot caps were not read, and the spare slots of the defs hide the fault). After R5 (a): path regression "cocell: 64 cocells have their family slots (R5)" (INTERNAL "the checker used more slots than check_program reserves") | KILLED (SURVIVED in the first run) |
+| R6 | src/front/eval.c:3426 bisim_field | add `a = b;` after `b = b == NULL ? NULL : rel_apply(m, h, b);`: the check compares b with b | test/check/codata-bisim.lang, cocell-nats-evens.lang and cocell-map-coassoc.lang (exit 0, not PATH_END): 3 gate failures | KILLED |
+| R7 | src/front/eval.c:3458 conv_bisim | `if (!spend(m, 1))` to `if (0 && !spend(m, 1))` | path regression "the bisimulation check spends 1 fuel" (bisim_fuel) | KILLED |
+| R8 | src/front/eval.c:3492 conv_counfold | `} else if (scrut_of(v) != SCRUT_NEUTRAL)` to `if (1 \|\| ...)` | examples/cocell.lang (PATH_END roundS), the cocell eval rows: 16 gate failures; 4 path regressions, with the fuel row, "bisimulation rule: eta at a variable" and "bisimulation rule: eta for an hcomp at a cofamily" | KILLED |
+| R9 | src/front/eval.c:3460 conv_bisim | `if (conv_values(m, level, s1.s, s2.s))` to `if (1 \|\| ...)`: h is always the identity | 16 gate failures; 3 path regressions, with the fuel row and "unfold: refl of g at 0 and g at 1 after eval" (PATH_END) | KILLED |
+
+### USER questions for S5
+
+- Q1 (open point 1): the conversion is not transitive on unfolds. Accept this incompleteness, or add a rule (for example the all-pairs hypothesis of Q2)?
+- Q2 (open point 7): add an all-pairs hypothesis (fresh x and y, independent) to K5 (a)?

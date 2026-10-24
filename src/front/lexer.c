@@ -13,6 +13,7 @@ typedef struct {
   Diag *diag;
   const char *source;
   Arena *arena;
+  int core_names;
 } Lexer;
 
 static const struct {
@@ -30,6 +31,7 @@ static const struct {
   {"elim", TOK_KW_ELIM},
   {"cofamily", TOK_KW_COFAMILY},
   {"cell", TOK_KW_CELL},
+  {"cocell", TOK_KW_COCELL},
 };
 
 const char *tok_kind_name(TokKind kind) {
@@ -63,6 +65,7 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_KW_ELIM: return "'elim'";
     case TOK_KW_COFAMILY: return "'cofamily'";
     case TOK_KW_CELL: return "'cell'";
+    case TOK_KW_COCELL: return "'cocell'";
   }
   return "a token";
 }
@@ -130,7 +133,7 @@ static int lex_ident(Lexer *lx) {
   size_t start = lx->pos;
   int line = lx->line;
   int col = lx->col;
-  while (is_ident_char(peek(lx, 0))) advance(lx, 1);
+  while (is_ident_char(peek(lx, 0)) || (lx->core_names && peek(lx, 0) == '.')) advance(lx, 1);
   push(lx, keyword_kind(lx->text + start, lx->pos - start), start, line, col);
   return 1;
 }
@@ -204,14 +207,14 @@ static int lex_symbol(Lexer *lx) {
   return 1;
 }
 
-int lex_source(Arena *arena, const char *source, const char *text, size_t len, TokenList *out, Diag *diag) {
+static int lex_source_impl(Arena *arena, const char *source, const char *text, size_t len, TokenList *out, Diag *diag, int core_names) {
   /* Each token takes at least one byte, and one EOF token follows. */
   Token *tokens = arena_alloc(arena, (len + 1) * sizeof(Token));
   if (tokens == NULL) return diag_fail(diag, "OOM", NULL, "%s: no memory for the tokens", source);
   Lexer lx = {
     .text = text, .len = len, .pos = 0, .line = 1, .col = 1,
     .out = tokens, .count = 0, .diag = diag, .source = source,
-    .arena = arena,
+    .arena = arena, .core_names = core_names,
   };
   for (;;) {
     skip_trivia(&lx);
@@ -224,4 +227,12 @@ int lex_source(Arena *arena, const char *source, const char *text, size_t len, T
   out->items = tokens;
   out->count = lx.count;
   return 1;
+}
+
+int lex_source(Arena *arena, const char *source, const char *text, size_t len, TokenList *out, Diag *diag) {
+  return lex_source_impl(arena, source, text, len, out, diag, 0);
+}
+
+int lex_core_source(Arena *arena, const char *source, const char *text, size_t len, TokenList *out, Diag *diag) {
+  return lex_source_impl(arena, source, text, len, out, diag, 1);
 }

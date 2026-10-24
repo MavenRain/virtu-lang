@@ -3,7 +3,10 @@
               | 'axiom' NAME ':' term
               | 'family' NAME group* (':' telescope)? ':=' ctor ('|' ctor)*
                 ('and' NAME group* (':' telescope)? ':=' ctor ('|' ctor)*)*
+              | 'cofamily' NAME group* ':=' term
+              | ('cell' | 'cocell') NAME group* ':=' op ('|' op)*
      ctor    := NAME group* ifield* (':' term)? ('[' cells ']')?
+     op      := NAME ':' term ('[' cells ']')?
      group   := '(' NAME+ ':' term ')'
      term    := 'fun' (NAME | group)+ '=>' term
               | group ('->' | '*') term
@@ -158,6 +161,7 @@ static int starts_atom(TokKind kind) {
     case TOK_KW_FAMILY:
     case TOK_KW_COFAMILY:
     case TOK_KW_CELL:
+    case TOK_KW_COCELL:
     case TOK_KW_AXIOM:
     case TOK_KW_AND:
       return 0;
@@ -395,6 +399,7 @@ static const Term *parse_atom(Parser *p) {
     case TOK_KW_FAMILY:
     case TOK_KW_COFAMILY:
     case TOK_KW_CELL:
+    case TOK_KW_COCELL:
     case TOK_KW_AXIOM:
     case TOK_KW_AND:
       break;
@@ -567,15 +572,17 @@ static int parse_cofamily(Parser *p, Decl *d) {
 /* `cell NAME params := op : T [system] | ...` (S2 K1, S3 K1): the cells
    over the carrier, the last parameter. Each cell has its type in RESULT
    and no fields. An n-cell has a system after its type. The checker
-   examines the types and makes the family (K3). */
-static int parse_cell(Parser *p, Decl *d) {
+   examines the types and makes the family (K3). `cocell NAME params :=
+   op : X -> T | ...` (S4 K1) has the same form; the checker makes the
+   layer family and the cofamily (S4 K2). */
+static int parse_cell(Parser *p, Decl *d, DeclKind kind) {
   bump(p);
-  d->kind = DECL_CELL;
+  d->kind = kind;
   d->is_rec = 0;
   d->index = NULL;
   d->type = NULL;
   d->body = NULL;
-  d->name = take_name(p, "a cell name");
+  d->name = take_name(p, kind == DECL_COCELL ? "a cocell name" : "a cell name");
   if (d->name == NULL) return 0;
   p->def = d->name;
   if (!parse_fields(p, &d->params, &d->param_count) || !expect(p, TOK_DEFINE, "':='")) return 0;
@@ -592,11 +599,12 @@ static int parse_cell(Parser *p, Decl *d) {
     ctor->fields = NULL;
     ctor->field_count = 0;
     ctor->boundary = NULL;
-    ctor->name = take_name(p, "a 0-cell name");
+    ctor->name = take_name(p, kind == DECL_COCELL ? "a 0-cocell name" : "a 0-cell name");
     if (ctor->name == NULL || !expect(p, TOK_COLON, "':'")) return 0;
     ctor->result = parse_term(p);
     if (ctor->result == NULL) return 0;
-    ctor->boundary = at(p, TOK_LBRACKET) ? parse_system(p) : NULL;
+    /* A cocell has 0-cocells only (O5 (a)): no system. */
+    ctor->boundary = kind == DECL_CELL && at(p, TOK_LBRACKET) ? parse_system(p) : NULL;
     if (ctor->boundary == NULL && p->diag->set) return 0;
   } while (eat(p, TOK_BAR));
   d->ctors = ctors;
@@ -630,7 +638,8 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_KW_AXIOM: return parse_axiom(p, d);
     case TOK_KW_FAMILY: return parse_family(p, d);
     case TOK_KW_COFAMILY: return parse_cofamily(p, d);
-    case TOK_KW_CELL: return parse_cell(p, d);
+    case TOK_KW_CELL: return parse_cell(p, d, DECL_CELL);
+    case TOK_KW_COCELL: return parse_cell(p, d, DECL_COCELL);
     case TOK_KW_ELIM:
     case TOK_EOF:
     case TOK_IDENT:
@@ -657,7 +666,7 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_KW_AND:
       break;
   }
-  return fail_at(p, tok, "'def', 'axiom', 'family', 'cofamily' or 'cell'");
+  return fail_at(p, tok, "'def', 'axiom', 'family', 'cofamily', 'cell' or 'cocell'");
 }
 
 int parse_source(Arena *arena, const char *source, Origin origin, const TokenList *toks, DeclList *list, Diag *diag) {

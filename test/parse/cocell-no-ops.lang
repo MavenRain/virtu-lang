@@ -1,0 +1,2 @@
+-- A cocell needs at least one 0-cocell after := (S4 K1).
+cocell Void (X : Type 0) :=

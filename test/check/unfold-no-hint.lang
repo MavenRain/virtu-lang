@@ -1,0 +1,2 @@
+-- unfold g s needs the cofamily from the expected type; out gives no hint (S4 K8).
+def bad : Nat := out (unfold (fun (n : Nat) => scons Nat Nat n (succ n)) 0)

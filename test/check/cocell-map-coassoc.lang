@@ -1,0 +1,4 @@
+-- Coassociativity in the map form `map duplicate (duplicate w)` does not
+-- hold by refl at a variable w (S4 K5 (a)); the form
+-- `extend duplicate w` holds (examples/cocell.lang).
+def com : (X : Type 0) -> (w : StreamK X) -> Path (StreamK (StreamK (StreamK X))) (map duplicate (duplicate w)) (duplicate (duplicate w)) := fun X w => refl

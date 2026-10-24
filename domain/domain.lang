@@ -52,6 +52,8 @@ family ColistF (A : Type 0) (X : Type 0) := cnil | ccons (chead : A) (ctail : X)
 cofamily Colist (A : Type 0) := ColistF A
 family MealyF (I : Type 0) (O : Type 0) (X : Type 0) := mealy (mealyOut : O) (mealyNext : I -> X)
 cofamily Mealy (I : Type 0) (O : Type 0) := MealyF I O
+family StoreF (S : Type 0) (A : Type 0) (X : Type 0) := storeL (storePos : S) (storePeek : S -> A)
+cofamily Store (S : Type 0) (A : Type 0) := StoreF S A
 
 -- Kan library (S2a, R6 (a)): transport, subst, J and the J rule as a path
 -- (JRefl, O11), all by transp.
@@ -260,3 +262,13 @@ cell StateC (S : Type 0) (X : Type 0) := getC : (getCK : S -> X) -> X
   | pgC : (pgCA : S) -> (pgCK : S -> X) -> (i : I) -> X [ ~i -> putC S X pgCA (getC S X pgCK), i -> putC S X pgCA (pgCK pgCA) ]
   | stSquashC : (stCFrom : X) -> (stCTo : X) -> (stCLeft : Path X stCFrom stCTo) -> (stCRight : Path X stCFrom stCTo) -> (i : I) -> (j : I) -> X
     [ ~i -> stCLeft @ j, i -> stCRight @ j, ~j -> stCFrom, j -> stCTo ]
+
+-- Cocells (S4, K1 to K4): the dual of a cell. `cocell C ps (X : Type 0)
+-- := o : X -> T` declares the cofamily C ps X, the cofree comonad on the
+-- observation T at X. Each op is a field of the layer. The builtins
+-- extract, extend, duplicate and map give the comonad. Store is not a
+-- cocell (its lens laws are coequations, C14): it is the cofamily of the
+-- layer StoreF above, and examples/cocell.lang gives its comonad by hand.
+cocell EnvK (E : Type 0) (X : Type 0) := askK : X -> E
+cocell StreamK (X : Type 0) := nextK : X -> X
+cocell CofreeK (A : Type 0) (B : A -> Type 0) (X : Type 0) := obsK : X -> (shK : A) * (B shK -> X)

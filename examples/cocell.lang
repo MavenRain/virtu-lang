@@ -1,0 +1,73 @@
+-- Cocells (S4, K1 to K6). EnvK, StreamK and CofreeK are the cocells of
+-- domain/domain.lang. A cocell C ps X is the cofamily of a layer with one
+-- node nodeC: the field extract, then one field for each 0-cocell. The
+-- step of an `unfold` makes the node. The builtins extract, extend,
+-- duplicate and map give the comonad. toK and toS are the maps between
+-- StreamK X and the domain Stream X. The laws L1 and L2 hold by
+-- computation. L3 holds by seed-preserving eta, including at closed
+-- seeds. Coassociativity is checked here after extract. Full
+-- coassociativity and stream round trips need a stronger path rule;
+-- graph-only refl proofs are refused fixtures.
+-- Store is the cofamily of the layer StoreF, with the comonad by hand
+-- (posT, peekT, seekT, exT). The step of mkT is closed and the seed holds
+-- the position and the peek: the rule checks a step at a fresh seed, thus
+-- a step that holds the old store fails. PropEnvK is the coreflection
+-- P * - (K6) for a proposition P. A cocell value has no JSON form.
+def nats : Stream Nat := unfold (fun (n : Nat) => scons Nat Nat n (succ n)) 0
+def toK : (X : Type 0) -> Stream X -> StreamK X :=
+  fun (X : Type 0) (w : Stream X) => unfold (fun (s : Stream X) => nodeStreamK X (Stream X) (shead (out s)) (stail (out s))) w
+def toS : (X : Type 0) -> StreamK X -> Stream X :=
+  fun (X : Type 0) (w : StreamK X) => unfold (fun (s : StreamK X) => scons X (StreamK X) (extract s) (nextK (out s))) w
+def takeK : (A : Type 0) -> Nat -> StreamK A -> List A :=
+  fun (A : Type 0) (k : Nat) => fold (fun (rest : StreamK A -> List A) (s : StreamK A) => cons (extract s) (rest (nextK (out s)))) (fun (s : StreamK A) => nil) k
+def natsK : StreamK Nat := toK Nat nats
+def headK : Nat := extract natsK
+def thirdK : Nat := extract (nextK (out (nextK (out natsK))))
+def doubledK : List Nat := takeK Nat 3 (map (fun (n : Nat) => natAdd n n) natsK)
+def sumsK : List Nat := takeK Nat 3 (extend (fun (s : StreamK Nat) => natAdd (extract s) (extract (nextK (out s)))) natsK)
+def backSecond : Nat := shead (out (stail (out (toS Nat natsK))))
+def roundList : List Nat := takeK Nat 3 (toK Nat (toS Nat natsK))
+def roundHeadS : (X : Type 0) -> (w : Stream X) -> Path X (shead (out (toS X (toK X w)))) (shead (out w)) := fun X w => refl
+def roundHeadK : (X : Type 0) -> (w : StreamK X) -> Path X (extract (toK X (toS X w))) (extract w) := fun X w => refl
+def streamL1 : (X : Type 0) -> (B : Type 0) -> (f : StreamK X -> B) -> (w : StreamK X) -> Path B (extract (extend f w)) (f w) := fun X B f w => refl
+def streamL2 : (X : Type 0) -> (w : StreamK X) -> Path (StreamK X) (extract (duplicate w)) w := fun X w => refl
+def streamL3 : (X : Type 0) -> (w : StreamK X) -> Path (StreamK X) (extend extract w) w := fun X w => refl
+def streamCoHead : (X : Type 0) -> (w : StreamK X) -> Path (StreamK (StreamK X)) (extract (extend (fun (s : StreamK X) => duplicate s) w)) (extract (duplicate (duplicate w))) := fun X w => refl
+def env : EnvK Nat Nat := unfold (fun (u : Prod Nat Nat) => nodeEnvK Nat Nat (Prod Nat Nat) (first u) (second u)) (pair 4 7)
+def envAsk : Nat := askK (out env)
+def envSum : Nat := extract (extend (fun (w : EnvK Nat Nat) => natAdd (extract w) (askK (out w))) env)
+def envL1 : (E : Type 0) -> (X : Type 0) -> (B : Type 0) -> (f : EnvK E X -> B) -> (w : EnvK E X) -> Path B (extract (extend f w)) (f w) := fun E X B f w => refl
+def envL2 : (E : Type 0) -> (X : Type 0) -> (w : EnvK E X) -> Path (EnvK E X) (extract (duplicate w)) w := fun E X w => refl
+def envL3 : (E : Type 0) -> (X : Type 0) -> (w : EnvK E X) -> Path (EnvK E X) (extend extract w) w := fun E X w => refl
+def envCo : (E : Type 0) -> (X : Type 0) -> (w : EnvK E X) -> Path (EnvK E (EnvK E (EnvK E X))) (extend duplicate w) (duplicate (duplicate w)) := fun E X w => refl
+def tree : CofreeK Nat (fun (a : Nat) => Nat) Nat :=
+  unfold (fun (n : Nat) => nodeCofreeK Nat (fun (a : Nat) => Nat) Nat Nat n (succ n) (fun (k : Nat) => natAdd n k)) 1
+def treeShape : Nat := shK (out tree)
+def treeChild : Nat := extract (obsK (out tree) 5)
+def cofreeL1 : (A : Type 0) -> (B : A -> Type 0) -> (X : Type 0) -> (C : Type 0) -> (f : CofreeK A B X -> C) -> (w : CofreeK A B X) -> Path C (extract (extend f w)) (f w) := fun A B X C f w => refl
+def cofreeL2 : (A : Type 0) -> (B : A -> Type 0) -> (X : Type 0) -> (w : CofreeK A B X) -> Path (CofreeK A B X) (extract (duplicate w)) w := fun A B X w => refl
+def cofreeL3 : (A : Type 0) -> (B : A -> Type 0) -> (X : Type 0) -> (w : CofreeK A B X) -> Path (CofreeK A B X) (extend extract w) w := fun A B X w => refl
+def cofreeCoHead : (A : Type 0) -> (B : A -> Type 0) -> (X : Type 0) -> (w : CofreeK A B X) -> Path (CofreeK A B (CofreeK A B X)) (extract (extend (fun (s : CofreeK A B X) => duplicate s) w)) (extract (duplicate (duplicate w))) := fun A B X w => refl
+def posT : (S : Type 0) -> (A : Type 0) -> Store S A -> S := fun (S : Type 0) (A : Type 0) (w : Store S A) => storePos (out w)
+def peekT : (S : Type 0) -> (A : Type 0) -> Store S A -> S -> A := fun (S : Type 0) (A : Type 0) (w : Store S A) => storePeek (out w)
+def mkT : (S : Type 0) -> (A : Type 0) -> S -> (S -> A) -> Store S A :=
+  fun (S : Type 0) (A : Type 0) (p : S) (k : S -> A) => unfold (fun (u : Prod S (S -> A)) => storeL S A (Prod S (S -> A)) (first u) (second u)) (pair p k)
+def seekT : (S : Type 0) -> (A : Type 0) -> S -> Store S A -> Store S A := fun (S : Type 0) (A : Type 0) (s : S) (w : Store S A) => mkT S A s (peekT S A w)
+def exT : (S : Type 0) -> (A : Type 0) -> Store S A -> A := fun (S : Type 0) (A : Type 0) (w : Store S A) => peekT S A w (posT S A w)
+def extendT : (S : Type 0) -> (A : Type 0) -> (B : Type 0) -> (Store S A -> B) -> Store S A -> Store S B :=
+  fun (S : Type 0) (A : Type 0) (B : Type 0) (f : Store S A -> B) (w : Store S A) => mkT S B (posT S A w) (fun (s : S) => f (seekT S A s w))
+def duplicateT : (S : Type 0) -> (A : Type 0) -> Store S A -> Store S (Store S A) :=
+  fun (S : Type 0) (A : Type 0) (w : Store S A) => mkT S (Store S A) (posT S A w) (fun (s : S) => seekT S A s w)
+def dbl : Store Nat Nat := mkT Nat Nat 3 (fun (s : Nat) => natAdd s s)
+def dblEx : Nat := exT Nat Nat dbl
+def dblSeek : Nat := exT Nat Nat (seekT Nat Nat 5 dbl)
+def dblNext : Nat := exT Nat Nat (extendT Nat Nat Nat (fun (w : Store Nat Nat) => exT Nat Nat (seekT Nat Nat (succ (posT Nat Nat w)) w)) dbl)
+def storeL1 : (S : Type 0) -> (A : Type 0) -> (B : Type 0) -> (f : Store S A -> B) -> (w : Store S A) -> Path B (exT S B (extendT S A B f w)) (f w) := fun S A B f w => refl
+def storeL2 : (S : Type 0) -> (A : Type 0) -> (w : Store S A) -> Path (Store S A) (exT S (Store S A) (duplicateT S A w)) w := fun S A w => refl
+def storeL3 : (S : Type 0) -> (A : Type 0) -> (w : Store S A) -> Path (Store S A) (extendT S A A (exT S A) w) w := fun S A w => refl
+def storeCo : (S : Type 0) -> (A : Type 0) -> (w : Store S A) -> Path (Store S (Store S (Store S A))) (extendT S A (Store S (Store S A)) (duplicateT S A) w) (duplicateT S (Store S A) (duplicateT S A w)) := fun S A w => refl
+cocell PropEnvK (P : Type 0) (pp : isProp P) (X : Type 0) := askP : X -> P
+def penv : PropEnvK (Not Empty) (isPropNot Empty) Nat :=
+  unfold (fun (n : Nat) => nodePropEnvK (Not Empty) (isPropNot Empty) Nat Nat n (fun (e : Empty) => e)) 5
+def penvNext : Nat := extract (extend (fun (w : PropEnvK (Not Empty) (isPropNot Empty) Nat) => succ (extract w)) penv)
+def propL2 : (P : Type 0) -> (pp : isProp P) -> (X : Type 0) -> (w : PropEnvK P pp X) -> Path (PropEnvK P pp X) (extract (duplicate w)) w := fun P pp X w => refl

@@ -62,7 +62,8 @@ typedef enum {
   DECL_AXIOM,  /* axiom name : type */
   DECL_FAMILY, /* family name params [: index] := ctor | ... [and ...] */
   DECL_COFAMILY, /* cofamily name params := body (S4): the body is the layer family */
-  DECL_CELL      /* cell name params := op : type | ... (S2): the checker makes a family */
+  DECL_CELL,     /* cell name params := op : type | ... (S2): the checker makes a family */
+  DECL_COCELL    /* cocell name params := op : X -> type | ... (S4): the checker makes a layer and a cofamily */
 } DeclKind;
 
 /* A family is legal only in the domain file (rule R1). */

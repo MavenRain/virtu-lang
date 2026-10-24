@@ -1,0 +1,4 @@
+-- The reverse round trip also requires changing the seed type.
+def toK : (X : Type 0) -> Stream X -> StreamK X := fun X w => unfold (fun (s : Stream X) => nodeStreamK X (Stream X) (shead (out s)) (stail (out s))) w
+def toS : (X : Type 0) -> StreamK X -> Stream X := fun X w => unfold (fun (s : StreamK X) => scons X (StreamK X) (extract s) (nextK (out s))) w
+def roundK : (X : Type 0) -> (w : StreamK X) -> Path (StreamK X) (toK X (toS X w)) w := fun X w => refl

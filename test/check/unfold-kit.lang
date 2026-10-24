@@ -1,0 +1,2 @@
+-- The kit form of unfold (3 arguments, into List) is removed (S4 K7).
+def down : List Nat := unfold (fun (n : Nat) => some (pair n (natSub n 1))) 3 5

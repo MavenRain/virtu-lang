@@ -1,0 +1,3 @@
+-- The inferred codomain is a local type whose sort is Type 1.
+def badMapNeutral : (B : Type 1) -> B -> StreamK Nat -> B :=
+  fun B x w => extract (map (fun (n : Nat) => x) w)

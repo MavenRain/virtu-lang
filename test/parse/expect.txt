@@ -13,3 +13,4 @@ cofamily-no-body.lang PARSE_EXPECT
 text-literal.lang LEX_CHAR
 cell-no-ops.lang PARSE_EXPECT
 cell-boundary-open.lang PARSE_EXPECT
+cocell-no-ops.lang PARSE_EXPECT

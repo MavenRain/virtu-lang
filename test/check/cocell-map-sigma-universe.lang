@@ -1,0 +1,4 @@
+-- A Sigma containing a Type 0 field has sort Type 1.
+def mapBigPair : (T : Type 0) * T := pack Nat 0
+def badMapSigma : StreamK Nat -> (T : Type 0) * T :=
+  fun w => extract (map (fun (n : Nat) => mapBigPair) w)

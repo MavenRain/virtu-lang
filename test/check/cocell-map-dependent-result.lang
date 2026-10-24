@@ -1,0 +1,3 @@
+-- A result depending on fn_into's fresh argument cannot escape its binder.
+def badMapDependent : (F : Nat -> Type 0) -> ((n : Nat) -> F n) -> StreamK Nat -> Nat :=
+  fun F f w => extract (map f w)

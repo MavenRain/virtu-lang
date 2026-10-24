@@ -18,7 +18,7 @@ static const char *const OP_NAMES[] = {
   [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_FOLD_NAT] = "fold",
-  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_UNFOLD] = "unfold",
+  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold",
   [OP_COUNFOLD] = "unfold", [OP_OUT] = "out",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
   [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
@@ -44,7 +44,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
-  [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_COUNFOLD] = 2, [OP_OUT] = 1, [OP_FILTER] = 2, [OP_WITNESS] = 1,
+  [OP_FOLD_FAMILY] = VARIES, [OP_COUNFOLD] = 2, [OP_OUT] = 1, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1,
   [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2, [OP_SUCC] = 1,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_PROJ] = 1,
@@ -1169,61 +1169,6 @@ static const Value *reduce_elim(Machine *m, uint32_t inst, uint32_t field, const
   return elim_family(m, field - 1u, a, n);
 }
 
-/* 1 when the step result R ends the list. *TAIL is then the end. */
-static int unfold_end(Machine *m, const Value *g, const Value *limit, uint64_t used, const Value *seed, const Value *r, const Value **tail) {
-  const Value *p = val_is(r, OP_SOME) ? r->args[0] : r;
-  if (val_is(r, OP_NONE)) {
-    *tail = constant(m, OP_NIL);
-    return 1;
-  }
-  switch (scrut_of(p)) {
-  case SCRUT_TRAP:
-    *tail = p;
-    return 1;
-  case SCRUT_NEUTRAL: {
-    const Value *spent = val_nat(m, used);
-    const Value *left = spent == NULL ? NULL : limit->kind == VAL_BIG
-      ? big_arith(m, limit, spent, big_sub) : val_nat(m, limit->nat - used);
-    *tail = make(m, VAL_STUCK, OP_UNFOLD, 0, 3, g, left, seed);
-    return 1;
-  }
-  case SCRUT_VALUE:
-    break;
-  }
-  if (val_is(p, OP_PAIR))
-    return 0;
-  *tail = internal(m, "an unfold step that is not an Option of a pair");
-  return 1;
-}
-
-/* unfold g limit seed: at most LIMIT elements. */
-static const Value *reduce_unfold(Machine *m, const Value *const *a, uint32_t n) {
-  const Value *seed = a[2];
-  const Value *out;
-  const Value *r;
-  const Value *tail = NULL;
-  ValBuf items;
-  uint64_t i;
-  uint64_t limit;
-  if (blocked(m, a[1], OP_UNFOLD, 0, 0, a, n, &out))
-    return out;
-  if (!is_nat(a[1]))
-    return internal(m, "an unfold limit that is not a Nat");
-  limit = a[1]->kind == VAL_BIG ? UINT64_MAX : a[1]->nat;
-  buf_init(&items);
-  for (i = 0; i < limit; i++) {
-    r = spend(m, 1) ? apply_value(m, a[0], seed) : NULL;
-    if (r == NULL)
-      return NULL;
-    if (unfold_end(m, a[0], a[1], i, seed, r, &tail))
-      return build_list(m, items.items, items.count, tail);
-    if (!buf_push(m, &items, r->args[0]->args[0]))
-      return NULL;
-    seed = r->args[0]->args[1];
-  }
-  return build_list(m, items.items, items.count, constant(m, OP_NIL));
-}
-
 static const Value *filter_option(Machine *m, const Value *const *a, uint32_t n) {
   const Value *test;
   const Value *out;
@@ -2173,7 +2118,6 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_FOLD_LIST:
   case OP_FOLD_FAMILY:
   case OP_ELIM:
-  case OP_UNFOLD:
   case OP_FILTER:
   case OP_WITNESS:
   case OP_PAYLOAD:
@@ -3200,8 +3144,6 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_fold_list(m, a);
   case OP_FOLD_FAMILY:
     return fold_family(m, inst, a, n - 2u, a[n - 1u]);
-  case OP_UNFOLD:
-    return reduce_unfold(m, a, n);
   case OP_FILTER:
     return reduce_filter(m, inst, a, n);
   case OP_NAT_ADD:
@@ -3400,6 +3342,171 @@ static int conv_system(Machine *m, uint32_t level, const Value *a, const Value *
   return 1;
 }
 
+/* 1 when FAM is a single-constructor layer of a cofamily. */
+static int is_layer(const Machine *m, uint32_t fam) {
+  uint32_t i;
+  if (m->families[fam].ctor_count != 1u)
+    return 0;
+  for (i = 0; i < m->family_count; i++)
+    if (m->families[i].cofamily && m->families[i].layer == fam)
+      return 1;
+  return 0;
+}
+
+/* Layer eta (S4 K5 (a)): the node A of a layer family against the neutral
+   B compares by projections, as conv_pair does for a pair. */
+static int conv_layer(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  uint32_t p = m->families[m->ctors[a->inst].family].param_count;
+  uint32_t n = m->ctors[a->inst].field_count;
+  uint32_t i;
+  if (a->argc != p + n)
+    return 0;
+  for (i = 0; i < n; i++)
+    if (!conv_values(m, level, a->args[p + i], reduce_proj(m, a->inst, i, &b, 1)))
+      return 0;
+  return 1;
+}
+
+/* A side of the bisimulation rule (S4 K5 (a)): unfold G S, or the neutral
+   S read as unfold out S when G is NULL (eta). */
+typedef struct {
+  const Value *g;
+  const Value *s;
+  const Value *type;
+} Side;
+
+/* The layer of the side with the step G at the seed V: G V, or out V. */
+static const Value *side_layer(Machine *m, uint32_t inst, const Value *g, const Value *v) {
+  return g != NULL ? apply_value(m, g, v) : reduce_out(m, inst, &v, 1);
+}
+
+/* Field I of the layer L, a node of the constructor NODE with P
+   parameters, or a neutral. */
+static const Value *layer_field(Machine *m, uint32_t node, uint32_t p, const Value *l, uint32_t i) {
+  if (l == NULL)
+    return NULL;
+  return val_is(l, OP_CTOR) && l->inst == node && p + i < l->argc ? l->args[p + i] : reduce_proj(m, node, i, &l, 1);
+}
+
+/* The field I of type T with the values A and B. Compare a Y field under
+   the binders of its Pi chain; another field converts directly. */
+static int bisim_field(Machine *m, uint32_t level, const Core *t, uint32_t i, const Value *a, const Value *b) {
+  uint32_t depth = 0;
+  uint32_t k;
+  for (; t->kind == CORE_PI; t = t->b)
+    depth++;
+  if (a == NULL || b == NULL)
+    return 0;
+  if (t->kind != CORE_VAR || t->index != i + depth)
+    return conv_values(m, level, a, b);
+  for (k = 0; k < depth && a != NULL && b != NULL; k++, level++) {
+    a = apply_value(m, a, val_var(m, level));
+    b = apply_value(m, b, val_var(m, level));
+  }
+  return a != NULL && b != NULL && conv_values(m, level, a, b);
+}
+
+/* One check at a fresh seed x: both steps have the same seed type and
+   agree field by field. Only the identity seed relation is admitted. */
+static int bisim_check(Machine *m, uint32_t level, uint32_t inst, const Value *g1, const Value *g2) {
+  const FamilyInfo *f = &m->families[inst];
+  uint32_t node = m->families[f->layer].first_ctor;
+  const CtorInfo *ctor = &m->ctors[node];
+  uint32_t p = f->param_count + 1u;
+  const Value *x = spend(m, 1) ? val_var(m, level) : NULL;
+  const Value *l1 = x == NULL ? NULL : side_layer(m, inst, g1, x);
+  const Value *l2 = l1 == NULL ? NULL : side_layer(m, inst, g2, x);
+  uint32_t i;
+  if (l2 == NULL)
+    return 0;
+  for (i = 0; i < ctor->field_count; i++)
+    if (!bisim_field(m, level + 1u, ctor->fields[i].type, i, layer_field(m, node, p, l1, i), layer_field(m, node, p, l2, i)))
+      return 0;
+  return 1;
+}
+
+/* Unequal seeds stay distinct. Inferring a graph relation from a variable
+   seed accepted open refl proofs whose closed instances were refused.
+   Check the seed-preserving rule uniformly, with one unit of fuel. */
+static int conv_bisim(Machine *m, uint32_t level, uint32_t inst, Side s1, Side s2) {
+  if (conv_values(m, level, s1.type, s2.type) && conv_values(m, level, s1.s, s2.s))
+    return bisim_check(m, level, inst, s1.g, s2.g);
+  return 0;
+}
+
+/* Eta is checked uniformly and contracts an unfold even at a closed
+   seed. Testing only against a neutral broke substitution of refl. */
+static int counfold_eta(Machine *m, uint32_t level, const Value *u) {
+  return u->arg != NULL && u->dom != NULL &&
+    conv_values(m, level, u->arg, u->dom) &&
+    bisim_check(m, level, u->inst, u->args[0], NULL);
+}
+
+/* A cofamily without Y fields is a finite record. Its observations can
+   be compared at the actual seeds, with no coinductive hypothesis. */
+static int finite_layer(const Machine *m, uint32_t inst) {
+  const CtorInfo *ctor = &m->ctors[m->families[m->families[inst].layer].first_ctor];
+  uint32_t i;
+  for (i = 0; i < ctor->field_count; i++) {
+    const Core *t = ctor->fields[i].type;
+    uint32_t depth = 0;
+    for (; t->kind == CORE_PI; t = t->b)
+      depth++;
+    if (t->kind == CORE_VAR && t->index == i + depth)
+      return 0;
+  }
+  return 1;
+}
+
+static int conv_finite(Machine *m, uint32_t level, uint32_t inst, Side s1, Side s2) {
+  const FamilyInfo *f = &m->families[inst];
+  uint32_t node = m->families[f->layer].first_ctor;
+  uint32_t p = f->param_count + 1u;
+  const Value *l1 = spend(m, 1) ? side_layer(m, inst, s1.g, s1.s) : NULL;
+  const Value *l2 = l1 == NULL ? NULL : side_layer(m, inst, s2.g, s2.s);
+  uint32_t i;
+  if (l2 == NULL)
+    return 0;
+  for (i = 0; i < m->ctors[node].field_count; i++)
+    if (!conv_values(m, level, layer_field(m, node, p, l1, i), layer_field(m, node, p, l2, i)))
+      return 0;
+  return 1;
+}
+
+/* An unfold A or B against the other side: two equal unfolds convert as
+   before. A single-constructor layer admits finite observation equality
+   or typed eta and seed-preserving bisimulation. An hcomp at a cofamily
+   is stuck (hcomp_stuck), so it
+   is a neutral and gets eta. A formal hcomp (only at a HIT) or an other
+   value does not convert. */
+static int conv_counfold(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  const Value *u = val_is(a, OP_COUNFOLD) ? a : b;
+  const Value *v = u == a ? b : a;
+  Side su = {u->args[0], u->args[1], u->arg};
+  Side sv = {NULL, v, u->dom};
+  if (val_is(v, OP_COUNFOLD)) {
+    if (v->inst != u->inst || u->argc != 2u || v->argc != 2u)
+      return 0;
+    if (conv_values(m, level, u->args[0], v->args[0]) && conv_values(m, level, u->args[1], v->args[1]))
+      return 1;
+    sv.g = v->args[0];
+    sv.s = v->args[1];
+    sv.type = v->arg;
+  } else if (scrut_of(v) != SCRUT_NEUTRAL)
+    return 0;
+  /* Record eta and these observation checks need exactly one constructor.
+     A sum layer must preserve its constructor tag. */
+  if (m->families[m->families[u->inst].layer].ctor_count != 1u)
+    return 0;
+  if (finite_layer(m, u->inst))
+    return conv_finite(m, level, u->inst, su, sv);
+  if (val_is(v, OP_COUNFOLD) && counfold_eta(m, level, v))
+    return conv_values(m, level, u, v->args[1]);
+  if (counfold_eta(m, level, u))
+    return conv_values(m, level, u->args[1], v);
+  return conv_bisim(m, level, u->inst, su, sv);
+}
+
 /* The last argument of an operation is compared in the loop, so a long
    list does not nest. */
 static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b) {
@@ -3413,6 +3520,12 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
       return conv_pair(m, level, a, b);
     if ((val_is(b, OP_PAIR) || val_is(b, OP_PACK)) && scrut_of(a) == SCRUT_NEUTRAL)
       return conv_pair(m, level, b, a);
+    if (val_is(a, OP_COUNFOLD) || val_is(b, OP_COUNFOLD))
+      return conv_counfold(m, level, a, b);
+    if (val_is(a, OP_CTOR) && scrut_of(b) == SCRUT_NEUTRAL && is_layer(m, m->ctors[a->inst].family))
+      return conv_layer(m, level, a, b);
+    if (val_is(b, OP_CTOR) && scrut_of(a) == SCRUT_NEUTRAL && is_layer(m, m->ctors[b->inst].family))
+      return conv_layer(m, level, b, a);
     if (a->kind != b->kind)
       return 0;
     switch (a->kind) {

@@ -1,0 +1,2 @@
+-- Coassociativity for a dependent observation needs an explicit path rule.
+def cofreeCo : (A : Type 0) -> (B : A -> Type 0) -> (X : Type 0) -> (w : CofreeK A B X) -> Path (CofreeK A B (CofreeK A B (CofreeK A B X))) (extend duplicate w) (duplicate (duplicate w)) := fun A B X w => refl

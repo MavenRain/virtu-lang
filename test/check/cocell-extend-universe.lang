@@ -1,0 +1,3 @@
+-- The codomain Type 1 of this function is not a cocell carrier.
+def badExtendUniverse : StreamK Nat -> Type 1 :=
+  fun w => extract (extend (fun (s : StreamK Nat) => Type 0) w)

@@ -1,0 +1,2 @@
+-- extract is the implicit 0-cocell of each cocell; an op cannot have this name (S4 K2).
+cocell Bad (X : Type 0) := extract : X -> X

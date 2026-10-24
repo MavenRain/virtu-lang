@@ -1,0 +1,3 @@
+-- A polymorphic Pi codomain has sort Type 1, although it is not a universe.
+def badMapPi : StreamK Nat -> (A : Type 0) -> A -> A :=
+  fun w => extract (map (fun (n : Nat) => fun (A : Type 0) (a : A) => a) w)

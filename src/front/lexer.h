@@ -33,7 +33,8 @@ typedef enum {
   TOK_KW_AND,
   TOK_KW_ELIM,
   TOK_KW_COFAMILY,
-  TOK_KW_CELL
+  TOK_KW_CELL,
+  TOK_KW_COCELL
 } TokKind;
 
 typedef struct {
@@ -53,6 +54,9 @@ typedef struct {
 
 /* SOURCE names the input in diagnostics. Returns 1, or 0 after a diagnostic. */
 int lex_source(Arena *arena, const char *source, const char *text, size_t len, TokenList *out, Diag *diag);
+/* Kernel readback only: also accepts generated dotted family and field
+   names. User sources always use lex_source. */
+int lex_core_source(Arena *arena, const char *source, const char *text, size_t len, TokenList *out, Diag *diag);
 const char *tok_kind_name(TokKind kind);
 
 #endif

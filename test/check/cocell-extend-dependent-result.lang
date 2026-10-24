@@ -1,0 +1,3 @@
+-- A result depending on fn_into's fresh argument cannot escape its binder.
+def badExtendDependent : (F : StreamK Nat -> Type 0) -> ((s : StreamK Nat) -> F s) -> StreamK Nat -> Nat :=
+  fun F f w => extract (extend f w)

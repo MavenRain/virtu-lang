@@ -1,0 +1,2 @@
+-- The carrier of a cocell is positive: List X is not a permitted field (S4 K3).
+cocell Bad (X : Type 0) := badK : X -> List X

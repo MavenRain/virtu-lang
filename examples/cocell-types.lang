@@ -1,0 +1,33 @@
+-- Type 0 codomains work with inferred and expected cocell result types.
+def extendCaptured : (A : Type 0) -> (F : A -> Type 0) -> (a : A) -> F a -> StreamK Nat -> F a :=
+  fun A F a x w => extract (extend (fun (s : StreamK Nat) => x) w)
+def extendCapturedHint : (A : Type 0) -> (F : A -> Type 0) -> (a : A) -> F a -> StreamK Nat -> StreamK (F a) :=
+  fun A F a x w => extend (fun s => x) w
+def extendShadow : (A : Type 0) -> A -> StreamK Nat -> Nat -> A :=
+  fun A x w A => extract (extend (fun (s : StreamK Nat) => x) w)
+def extendSmallPi : StreamK Nat -> (Nat -> Nat) :=
+  fun w => extract (extend (fun (s : StreamK Nat) => fun (n : Nat) => n) w)
+-- Implicit layer types and projections use internal dotted names in readback.
+def extendLayer : StreamK Nat -> Nat :=
+  fun w => extract (nextK (extract (extend (fun (s : StreamK Nat) => out s) w)))
+def extendLayerPi : StreamK Nat -> Nat :=
+  fun w => extract (nextK ((extract (extend (fun (s : StreamK Nat) => fun (n : Nat) => out s) w)) 0))
+def extendNeutralProjection : (F : Nat -> Type 0) -> (w : StreamK Nat) -> F (extract w) -> F (extract w) :=
+  fun F w x => extract (extend (fun (s : StreamK Nat) => x) w)
+
+-- Type 0 codomains work with inferred and expected cocell result types.
+def mapCaptured : (A : Type 0) -> (F : A -> Type 0) -> (a : A) -> F a -> StreamK Nat -> F a :=
+  fun A F a x w => extract (map (fun (n : Nat) => x) w)
+def mapCapturedHint : (A : Type 0) -> (F : A -> Type 0) -> (a : A) -> F a -> StreamK Nat -> StreamK (F a) :=
+  fun A F a x w => map (fun n => x) w
+def mapShadow : (A : Type 0) -> A -> StreamK Nat -> Nat -> A :=
+  fun A x w A => extract (map (fun (n : Nat) => x) w)
+def mapSmallPi : StreamK Nat -> (Nat -> Nat) :=
+  fun w => extract (map (fun (n : Nat) => fun (m : Nat) => m) w)
+-- Implicit layer types and projections use internal dotted names in readback.
+def mapLayer : StreamK Nat -> Nat :=
+  fun w => extract (nextK (extract (map (fun (n : Nat) => out w) w)))
+def mapLayerPi : StreamK Nat -> Nat :=
+  fun w => extract (nextK ((extract (map (fun (n : Nat) => fun (m : Nat) => out w) w)) 0))
+def mapNeutralProjection : (F : Nat -> Type 0) -> (w : StreamK Nat) -> F (extract w) -> F (extract w) :=
+  fun F w x => extract (map (fun (n : Nat) => x) w)

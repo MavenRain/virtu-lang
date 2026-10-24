@@ -1,0 +1,3 @@
+-- An expected Type 0 carrier must also reject a function into Type 1.
+def badMapHint : StreamK Nat -> StreamK Nat :=
+  fun w => map (fun n => Type 0) w

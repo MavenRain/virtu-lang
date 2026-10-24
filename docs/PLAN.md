@@ -172,6 +172,53 @@ proposals K1 to K13 are all (a). These are now rulings:
 - K13 PLAN 2.2 cites Rijke, Shulman and Spitters 2020 for the
   localization HIT. The State row says "for sets S and X".
 
+### USER ruling (S4 kickoff)
+
+On 2026-10-23 the USER said: "Rule defaults for K1-K12". Thus the S4
+kickoff proposals K1 to K12 are all (a). These are now rulings:
+
+- K1 a cocell has the form `cocell D (ps) (X : Type 0) := obs1 : X -> T1
+  | obs2 : X -> T2`. Each op type starts with `X ->`. An X in T_i is the
+  self position. `extract` is implicit and its name is reserved. `cocell`
+  is a keyword. A cocell with no op is a parse refusal.
+- K2 a cocell is `nu Y. X * F Y`. The kernel makes the layer family and
+  the cofamily. A Sigma observation splits into 2 fields. The builtins
+  `extract`, `extend` and `duplicate` make a canonical node: one
+  projection of `out s` for each field. A program can declare a cocell.
+  USER ruling (2026-10-23): the node of a cocell D is the surface
+  constructor `nodeD`, a core name under rule R4. `D.layer`,
+  `D.extract` and `D.Y` stay hidden (STATUS S4 D1).
+- K3 the type of the step is the guard. There is no new rule.
+- K4 domain/domain.lang gets `EnvK`, `StreamK` and `CofreeK`. Store is a
+  library comonad with a direct layer, not a cocell comonad.
+  examples/cocell.lang gives Store by hand and the maps between
+  `StreamK X` and `Stream X`.
+- K5 conversion up to bisimulation. A neutral converts with an unfold by
+  eta. Two unfolds convert when a hypothesis (g1, g2, h) passes one check
+  at a fresh variable, and each check spends fuel. L3 and
+  coassociativity in the form `extend duplicate w = duplicate (duplicate
+  w)` are refl. The map form of coassociativity and codata-bisim.lang
+  stay refused.
+- K6 `P * -` is a cocell with a parameter pair `(P : Type 0)
+  (pp : isProp P)`. The idempotence is an open point.
+- K7 the kit `unfold` into `List` goes. examples/algebra.lang `down` uses
+  `take`.
+- K8 the S3 leftovers: the D1 message names the cell, path_case_type
+  gives a diagnostic, the c1 and c6 killers, fixtures for the refusal
+  paths with no fixture, and tries for the P5, P10 and P10b killers.
+- K9 the tests are in the guest language and in the C runner. There is no
+  new host harness.
+- K10 S4 has 9 mutants, R1 to R9.
+- K11 the predicted S4 gate is: examples 36, parse 16, check 101, evals
+  about 155, json 36, build refusals 5, regressions 6, printer 2, path
+  regressions 178.
+- K12 PLAN 2.3 changes: the Stream dual is `Nat * X`, the Store row names
+  `pos`, `seek` and the lens laws, and the comonad laws cite the sources
+  and the K5 route.
+
+
+S4 staged review correction: the proposed variable graph relation failed transitivity and substitution checks and is removed from judgmental conversion. The implementation retains layer eta, typed eta at closed or neutral seeds, and uniform comparisons with convertible seeds of the same type. A cofamily without recursive Y fields compares by its finite observations. L1, L2 and L3 remain `refl`; Store laws and EnvK coassociativity also check. Full StreamK/CofreeK coassociativity and stream round trips require a stronger path rule and are currently explicit `refl` refusals. The kickoff ruling above records the original proposal; it does not establish these unsupported conversion cases.
+
 ## 2. The type constructors
 
 ### 2.1 The ambient category
@@ -263,14 +310,22 @@ The dual of a cell monad is a comonad that cocells generate. A 0-cocell is
 an observation with a co-arity: `obs : D X -> (a : A) * (B a -> D X)`. The
 comonad `D_C` sends `X` to the final coalgebra that `extract : D_C X -> X`
 and the cocells generate: the cofree `C`-coalgebra on `X`. `extend` and
-`duplicate` come from `unfold`. The comonad laws are paths.
+`duplicate` come from `unfold`. The comonad laws are paths. A
+bisimulation gives a path in an M-type (Ahrens, Capriotti and Spadotti,
+"Non-wellfounded trees in homotopy type theory", TLCA 2015, Definition 4
+and Theorem 18). Cubical Agda gives paths in a coinductive type by
+copatterns over an interval variable (Vezzosi, Moertberg and Abel, JFP
+2021, section 2.3). The kernel route (S4 K5) is limited after staged
+review to seed-preserving bisimulation, typed eta, and finite observation
+equality. The observation and layer eta rules require a single-constructor
+layer. The proposed variable graph rule is deferred as described above.
 
 | Comonad | Cocells | Dual of |
 |---|---|---|
 | `Env E X = E * X` | one 0-cocell `ask : D X -> E` | `Either E` |
-| `Stream X` | one 0-cocell `next : D X -> D X` | `Nat` (the free monad on the identity) |
+| `Stream X` | one 0-cocell `next : D X -> D X` | `Nat * X` (the free monad on the identity, `mu Y. X + Y`) |
 | `Cofree (A, B) X` | one 0-cocell `obs : D X -> (a : A) * (B a -> D X)` | `Free (A, B)` |
-| `Store S X = S * (S -> X)` | the costate cocells `pos` and `peek` | `State S` |
+| `Store S X = S * (S -> X)` | the costate co-operations `pos` and `seek` with the lens laws as coequations (Gibbons and Johnson 2012, section 3.2; Garner 2021, Example 16). Store is a library comonad, not a cocell comonad: the bare cocells give `nu Y. X * S * (S -> Y)` | `State S` |
 
 The dual of an n-cell (n >= 1) is a colocalization. An internal
 coreflection in HoTT is `X |-> P * X` for a proposition `P` (Shulman,

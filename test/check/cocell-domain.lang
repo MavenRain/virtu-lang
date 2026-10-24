@@ -1,0 +1,2 @@
+-- The type of a 0-cocell must start with the carrier `X ->` (S4 K1).
+cocell Bad (X : Type 0) := badK : Nat

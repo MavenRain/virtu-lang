@@ -1,0 +1,2 @@
+-- Kernel readback accepts internal field names, but user input cannot name them.
+def badInternalName : Nat := StreamK.extract

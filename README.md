@@ -10,7 +10,7 @@ are only the four classes of the request: `Avatar`, `VirtuCard`,
 of the final state of each instance that the program makes.
 `docs/PLAN.md` gives the reading of the request, the slices and the open
 items. S1 ports the cubical kernel with test fixtures in the sample domain.
-The cell declarations, four base classes and state runner come in later slices.
+The cell declarations (S2, S3) and the cocell declarations (S4) are in the kernel. The four base classes and the state runner come in later slices.
 
 - `SPEC.md`: the specification. Fill each section.
 - `design/DESIGN.md`: the domain design. It is the only source of the core
