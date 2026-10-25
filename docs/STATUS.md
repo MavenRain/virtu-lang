@@ -800,3 +800,71 @@ check refusals 134, evals 214, JSON builds 41, build refusals 8,
 regressions 6, printer regressions 2 and path regressions 282. The original
 gate and deviations above record the build before this review. No CI
 check was removed or weakened. No remaining review blocker.
+
+## S7
+
+S7 is the close slice of PLAN section 7: the marketplace example, the mutants Y1 to Y5 and the docs. The kickoff proposals K1 to K8 and the questions Q-S7-1 to Q-S7-3 are all (a) (docs/PLAN.md, `### USER ruling (S7 kickoff)`). The kickoff record is ~/Documents/virtu-lang-work/S7-kickoff.md. The build records are in ~/Documents/virtu-lang-work/ (outside the repo, below: W). S7 has no change in src/ and domain/.
+
+### Gate
+
+`make -B -j 2 check` exits 0 (log W/s7-build-gate.log). The S6R commit is c654753 (tree 3b6c2dac; gate log W/s7-base-gate.log).
+
+| gate line | S6R commit | K6 | S7 | difference and cause |
+|---|---|---|---|---|
+| examples | 41 | 42 | 42 | +1: examples/market.lang (K1) |
+| parse refusals | 16 | 16 | 16 | none |
+| check refusals | 134 | 134 | 134 | none (K4) |
+| evals | 214 | 219 | 219 | +5: the market rows (K2) |
+| json (builds) | 41 | 42 | 42 | +1: test/json/market.json (K1) |
+| build refusals | 8 | 8 | 8 | none |
+| regressions | 6 | 6 | 6 | none |
+| printer regressions | 2 | 2 | 2 | none |
+| path regressions | 282 | 282 | 282 | none (K4) |
+
+Each line is equal to the K6 prediction.
+
+### K rows
+
+- K1 (Q-S7-1 (a)): examples/market.lang is W/s7-probe/market.lang byte for byte (cmp rc 0). The story uses 12 of the 28 0-cells. Ada buys a lamp at the Bazaar (row 21, `purchaseItem`), gives Bo 30 credits (row 16, `transfer`), and Bo buys the rare vase at the Gallery (row 22, `purchase`: the card owner is the buyer). `langc check` gives `ok` (rc 0, 0.06 s real, 62416 max RSS, zsh units). Thus the name `market` and each def name pass R4 (REFUSE_NAME). `langc build examples/market.lang -o test/json/market.json` gives rc 0. The output is byte-equal to the kickoff probe W/s7-market.json (cmp rc 0, 8 instances). The file is not in test/gate-domain.txt: it runs through build/langc, as examples/virt.lang does.
+- K2: 5 rows in test/eval/expect.txt (script W/s7-k2.py): `market marketBalances => pair 50 40`, `market marketBags => pair 1 1`, `market marketEntries => pair 3 3`, `market marketShort => 50` (O20 (a): a transfer of 500 gives `none` and no change) and `market marketSize => 8`.
+- K3 (Q-S7-2 (a)): no guest probe of the quote route. The C row `reference: quoting option preserves refusal propagation` is the killer of Y5 (open point 3).
+- K4: no check refusal file and no path regression row. S7 adds no rule and no refusal.
+- K5: see Mutants (K5) below: 5 of 5 KILLED.
+- K6: the gate above.
+- K7: README.md (the stale line on the base classes and the runner is replaced by the content of S5 to S7), PLAN section 1 (`### USER ruling (S7 kickoff)`), PLAN section 7 (row S7, Built) and this section. PLAN section 8 does not change: each of O1 to O24 occurs in section 1, and `### USER ruling (S0)` rules them all (a).
+- K8: see Open points below.
+- Q-S7-3 (a): after the S7 commit the plan is CLOSED.
+
+### Added tests
+
+- examples/market.lang and its golden test/json/market.json (examples + 1, json + 1).
+- test/eval/expect.txt, 5 rows (K2).
+
+### Deviations
+
+- D1: the S7 build prompt and the kickoff give 36 lines for W/s7-probe/market.lang. The file has 31 lines (`wc -l`). It is byte-equal to the scratch copy that the kickoff probed (W/s7-scratch/probe/market.lang, cmp rc 0), and its build is byte-equal to the probe golden. Thus the count in the prompt is wrong, not the file.
+
+### Mutants (K5)
+
+The mutant script is W/s7-mutant.py (argv[1] = the root of a copy, argv[2] = Y1 to Y4). Y5 is a file copy: src/front/eval.c from the staged tree d0d31636 (the review fix reverted, 22 diff lines). The runner is W/s7-build-mut.zsh, a copy of the kickoff runner W/s7-probes2.zsh with the final example (log W/s7-build-mut.log). Scratch: W/s7-scratch, refreshed from main after K1 and K2 (rsync with no .git; src, domain, examples and test equal to main). Copy: W/s7-mut. For each mutant: apply it, `make -B -j 2` (rc 0), `langc build examples/market.lang` and cmp with test/json/market.json, the 5 market evals, `sh test/gate.sh`. The control Y0 (no mutation): gate.sh rc 0 with 0 FAIL, examples 42, evals 219, json 42; path regressions 282 checked, 0 failed. After the last restore, src and domain of the copy are equal to main (diff rc 0). Result: 5 of 5 KILLED.
+
+| id | site | mutation | killer (gate.sh FAIL lines) | result |
+|---|---|---|---|---|
+| Y1 | domain/domain.lang:363, `transfer` | `(transferIn Empty)` and `(transferOut Empty)` swapped (the entry kinds of the target and the source) | the market golden only (1 FAIL) | KILLED |
+| Y2 | domain.lang:805, `listVirtualItem` | the listing price `creditsMul v (multiplier r)` to `v` | the market golden, `market marketBalances` (`pair 50 70`) and `virt listedValue` (want 40, got 10) (3 FAIL) | KILLED |
+| Y3 | domain.lang:812, `purchase` (row 22) | the buyer (the card owner by `withCard`) to `avatarRef Empty 0` | the market golden, `market marketBags` (`pair 2 0`), and examples/virt-write-laws.lang: its check, its 2 evals and its build (EVAL_REF_UNKNOWN in `writeReadRun`) (6 FAIL) | KILLED |
+| Y4 | src/json.c:803, `ENUM_NAMES` | the names `"transferOut"` and `"transferIn"` swapped | the market golden only (1 FAIL) | KILLED |
+| Y5 | src/front/eval.c, the staged review fix | eval.c from tree d0d31636 (the 3 hunks reverted) | the C row `reference: quoting option preserves refusal propagation` only: path regressions rc 1, "280 checked, 1 failed". gate.sh rc 0, the market golden cmp rc 0 | KILLED |
+
+Notes:
+
+- Y1 and Y4 are killed only by the new golden. Before S7, no golden had a transfer entry. Old tests also kill Y2 and Y3.
+- Cost on the copy: gate.sh 28 s to 36 s real, max RSS about 1048400; path regressions 18 s to 19 s real, max RSS 489456 (Y0) and 604672 (Y5) (zsh `%M` units).
+
+### Open points (S7-build-PROMPT.md)
+
+1. S6R open point 6: F20 for the terms of the domain library (PLAN section 3). It stays open (K8).
+2. S6R open point 7: the S6 open points 7 (F11) and 10 (S5 open point 9, the S5 mutants U1 to U10). They stay open (K8).
+3. Y5: no guest test kills the staged review fix. The kickoff probes b1 (a `cong` line whose path ends have a neutral Option elimination, applied at an unknown reference) and b2 (its control with no `cong`) give `ok` with the fix and with the fix reverted. Only the C row kills it (K3 (a)). It stays open (K8).
+
+The plan is CLOSED after the S7 commit (Q-S7-3 (a)).

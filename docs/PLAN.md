@@ -382,6 +382,31 @@ option. The work files keep the option and the date, not more words.
   change: `langc check` of that row as a program gives rc 0 (S6R build
   s13).
 
+### USER ruling (S7 kickoff)
+
+On 2026-10-25 the USER said: "Follow
+~/Documents/virtu-lang-work/S7-build-PROMPT.md. Rulings: K1-K8 and
+Q-S7-1..3: take all recommendations. NEVER commit. After, if necessary,
+give next session prompt." Thus the S7 kickoff proposals (S7-kickoff.md
+`## STEP 3 K rows`) are all (a). These are now rulings:
+
+- K1 (a) and Q-S7-1 (a): examples/market.lang is the probed story (two
+  avatars, two terminals and a transfer; rows 21 and 22 by different
+  avatars). test/json/market.json is its golden.
+- K2 (a): 5 eval rows of `market` in test/eval/expect.txt.
+- K3 (a) and Q-S7-2 (a): the C row `reference: quoting option preserves
+  refusal propagation` is the only killer of the staged review fix
+  (mutant Y5). The build adds no guest probe of the quote route.
+- K4 (a): S7 adds no rule and no refusal, thus no check refusal file and
+  no path regression row.
+- K5 (a): the mutants Y1 to Y5, rerun with the final example.
+- K6 (a): the gate prediction: examples 42, evals 219, json 42; the other
+  lines as in the S6R commit.
+- K7 (a): README.md, section 7 row S7 and STATUS `## S7`. Section 8 does
+  not change: `### USER ruling (S0)` rules O1 to O24 all (a).
+- K8 (a): S6R open points 6 and 7 and the new point Y5 stay open.
+- Q-S7-3 (a): after the S7 commit the plan is CLOSED.
+
 ## 2. The type constructors
 
 ### 2.1 The ambient category
@@ -816,7 +841,7 @@ There is no IO, no network and no console program.
 | S5 | The base span: the carriers of section 4, the four classes, `Virt` with the 27 operations as 0-cells, the world, the runner and the JSON output of section 6. |
 | S6 | L5 of 5.3 as 11 1-cells of `Virt`, with `refl` runner paths; L1 to L4 as closed-world rows. |
 | S6R | The routes R1 to R4 of 5.3, each with a probe before code: the world lemmas, the proofs of L1 to L4 at a variable world, and L1 to L4 as 1-cells of `Virt` with their runner paths. Then O23 (a) is complete. S7 can come after S6R or in parallel with it. Built: R1 to R4 as K1 to K4 (a), 6 1-cells (46 constructors), the mutants X1 to X6 killed, O23 (a) complete. |
-| S7 | Examples (a marketplace with two avatars, two terminals and a transfer), mutants, docs. Close. |
+| S7 | Examples (a marketplace with two avatars, two terminals and a transfer), mutants, docs. Close. Built: examples/market.lang (two avatars, two terminals, a transfer), 5 eval rows, the mutants Y1 to Y5. The plan is closed. |
 
 Each slice ends with `make check` GREEN, guest test files for each new
 rule and refusal, and a mutant table (each mutant killed or recorded).

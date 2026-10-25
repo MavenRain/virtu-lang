@@ -1,0 +1,31 @@
+-- The S7 marketplace (PLAN section 7 row S7): two avatars, two terminals
+-- and a transfer. Ada buys a lamp at the Bazaar, gives Bo 30 credits, and
+-- Bo buys a rare vase at the Gallery. main is the story;
+-- test/json/market.json is its document.
+def marketStory : (R : Type 0) -> (Avatar -> VirtuCard -> Avatar -> VirtuCard -> Virt R) -> Virt R :=
+  fun (R : Type 0) (k : Avatar -> VirtuCard -> Avatar -> VirtuCard -> Virt R) =>
+    avatar R "Ada" explorer (fun (a : Avatar) => createVirtucard R a 100 (fun (c : VirtuCard) => attachCard R a c
+    (avatar R "Bo" merchant (fun (b : Avatar) => createVirtucard R b 50 (fun (d : VirtuCard) => attachCard R b d
+    (terminal R "Bazaar" "tools" (fun (t : VirtualTerminal) => listItem R t "Lamp" 20 "a lamp"
+    (terminal R "Gallery" "art" (fun (g : VirtualTerminal) => item R "Vase" "art" 10 (fun (z : VirtualItem) =>
+    setRarity R z (rare Empty) (listVirtualItem R g z
+    (purchaseItem R t a "Lamp" c (fun (o : Option VirtualItem) =>
+    transfer R c d 30 (fun (p : Option Unit) =>
+    purchase R g "Vase" d (fun (q : Option VirtualItem) =>
+    avatarSet R a "guild" "north" (k a c b d))))))))))))))))
+def main : Virt Unit := marketStory Unit (fun (a : Avatar) (c : VirtuCard) (b : Avatar) (d : VirtuCard) => pure unit)
+-- Reads at the end of the story, from the empty world.
+def marketResult : (X : Type 0) -> (Avatar -> VirtuCard -> Avatar -> VirtuCard -> Virt X) -> X :=
+  fun (X : Type 0) (k : Avatar -> VirtuCard -> Avatar -> VirtuCard -> Virt X) => second (run X (marketStory X k) worldNil)
+def marketBalances : Prod Credits Credits := marketResult (Prod Credits Credits) (fun (a : Avatar) (c : VirtuCard) (b : Avatar) (d : VirtuCard) =>
+  cardBalance (Prod Credits Credits) c (fun (x : Credits) => cardBalance (Prod Credits Credits) d (fun (y : Credits) => pure (pair x y))))
+def marketBags : Prod Nat Nat := marketResult (Prod Nat Nat) (fun (a : Avatar) (c : VirtuCard) (b : Avatar) (d : VirtuCard) =>
+  avatarInventory (Prod Nat Nat) a (fun (u : List VirtualItem) => avatarInventory (Prod Nat Nat) b (fun (v : List VirtualItem) =>
+  pure (pair (listSize VirtualItem u) (listSize VirtualItem v)))))
+def marketEntries : Prod Nat Nat := marketResult (Prod Nat Nat) (fun (a : Avatar) (c : VirtuCard) (b : Avatar) (d : VirtuCard) =>
+  cardHistory (Prod Nat Nat) c (fun (h : List Entry) => cardHistory (Prod Nat Nat) d (fun (e : List Entry) =>
+  pure (pair (listSize Entry h) (listSize Entry e)))))
+-- O20 (a): a transfer above the balance gives none and no change.
+def marketShort : Credits := marketResult Credits (fun (a : Avatar) (c : VirtuCard) (b : Avatar) (d : VirtuCard) =>
+  transfer Credits c d 500 (fun (p : Option Unit) => cardBalance Credits c (fun (x : Credits) => pure (option x (fun (u : Unit) => 0) p))))
+def marketSize : Nat := worldCount (first (run Unit main worldNil))

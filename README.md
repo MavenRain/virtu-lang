@@ -10,7 +10,12 @@ are only the four classes of the request: `Avatar`, `VirtuCard`,
 of the final state of each instance that the program makes.
 `docs/PLAN.md` gives the reading of the request, the slices and the open
 items. S1 ports the cubical kernel with test fixtures in the sample domain.
-The cell declarations (S2, S3) and the cocell declarations (S4) are in the kernel. The four base classes and the state runner come in later slices.
+The cell declarations (S2, S3) and the cocell declarations (S4) are in the
+kernel. S5 adds the four base classes, the cell monad `Virt` of their
+operations, the world, the runner and the JSON output. S6 and S6R add the
+laws of `Virt` as 1-cells with their runner paths. S7 adds the marketplace
+example `examples/market.lang` (two avatars, two terminals and a transfer)
+and closes the plan.
 
 - `SPEC.md`: the specification. Fill each section.
 - `design/DESIGN.md`: the domain design. It is the only source of the core
