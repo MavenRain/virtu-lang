@@ -1,0 +1,2 @@
+-- A program cannot name refUnknown (S6R Q1, rule R2), also in a def type (D1).
+def lost : Path Nat (avatarId (refUnknown Avatar 7)) 7 := refl

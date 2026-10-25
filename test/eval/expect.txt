@@ -210,3 +210,5 @@ carriers kindCode => 6
 carriers kindBack => 4
 virt-laws readTwo => 10
 virt-laws readOne => 10
+virt-write-laws observedBefore => "east"
+virt-write-laws observedAfter => "east"

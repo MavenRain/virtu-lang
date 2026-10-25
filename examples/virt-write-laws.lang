@@ -1,0 +1,18 @@
+-- L4: a read after a write sees the written value.
+-- The runner path holds at a variable world, reference, key and value.
+def writeReadRun : (a : Avatar) -> (k : Text) -> (v : Value) -> (f : Option Value -> Virt Unit) -> (w : W) ->
+    Path (Prod W Unit) (run Unit (avatarSet Unit a k v (avatarGet Unit a k f)) w) (run Unit (avatarSet Unit a k v (f (some v))) w) :=
+  fun (a : Avatar) (k : Text) (v : Value) (f : Option Value -> Virt Unit) (w : W) => fun (i : I) => run Unit (wrASet Unit a k v f i) w
+def remember : Avatar -> Option Value -> Virt Unit := fun (a : Avatar) (v : Option Value) =>
+  avatarSet Unit a "seen" (option "missing" (fun (x : Value) => x) v) (pure unit)
+def writePath : (a : Avatar) -> Path (Virt Unit)
+    (avatarSet Unit a "guild" "east" (avatarGet Unit a "guild" (remember a)))
+    (avatarSet Unit a "guild" "east" (remember a (some "east"))) :=
+  fun (a : Avatar) => fun (i : I) => wrASet Unit a "guild" "east" (remember a) i
+def before : Virt Unit := avatar Unit "Ada" explorer (fun (a : Avatar) => avatarSet Unit a "guild" "north" (writePath a @ i0))
+def after : Virt Unit := avatar Unit "Ada" explorer (fun (a : Avatar) => avatarSet Unit a "guild" "north" (writePath a @ i1))
+def observed : Virt Unit -> Value := fun (p : Virt Unit) => withAvatar Value (first (run Unit p worldNil)) (avatarRef Empty 0)
+  (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => option "missing" (fun (x : Value) => x) (attrGet s "seen"))
+def observedBefore : Value := observed before
+def observedAfter : Value := observed after
+def main : Virt Unit := before

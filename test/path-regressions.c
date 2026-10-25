@@ -175,7 +175,8 @@ static int accepts(const char *label, const char *source) {
   Machine m;
   Diag diag;
   int ok;
-  arena_init(&arena, (size_t)128 << 20);
+  /* 512 MB: the L5 2-dim row (S6) needs more than 128 MB (S6R). */
+  arena_init(&arena, (size_t)512 << 20);
   ok = checked(&arena, &m, &diag, source);
   if (!ok) {
     fprintf(stderr, "FAIL %s\n", label);
@@ -224,6 +225,40 @@ static int domain_refuses(const char *label, const char *domain, const char *sou
     if (diag.set)
       diag_print(&diag, stderr);
   }
+  arena_release(&arena);
+  return ok;
+}
+
+/* Quoting a neutral eliminator must keep the type used by refUnknown. */
+static int reference_quote(void) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  uint32_t i;
+  int ok;
+  const char *labels[] = { "option", "list", "list with a constructor prefix" };
+  const char *domain =
+    "def rqO : Nat -> Option Nat := fun (n : Nat) => refUnknown (Option Nat) n\n"
+    "def rqL : Nat -> List Nat := fun (n : Nat) => refUnknown (List Nat) n\n";
+  const char *source =
+    "def rqOption : Option Nat -> Nat := fun (o : Option Nat) => option 0 (fun (x : Nat) => x) o\n"
+    "def rqList : List Nat -> Nat := fun (xs : List Nat) => fold (fun (x : Nat) (r : Nat) => r) 0 xs\n"
+    "def rqPrefix : List Nat -> List Nat := fun (xs : List Nat) => fold (fun (x : Nat) (r : List Nat) => cons x r) nil (cons 1 xs)\n";
+  arena_init(&arena, (size_t)128 << 20);
+  ok = domain_checked(&arena, &m, &diag, domain, source);
+  for (i = 0; ok && i < 3u; i++) {
+    const Value *fn = def_value(&m, m.def_count - 3u + i);
+    const Core *q = quote_value(&m, 0, fn);
+    const Value *copy = eval_core(&m, NULL, q);
+    const Value *unknown = apply_value(&m, def_value(&m, m.def_count - (i == 0u ? 5u : 4u)), val_var(&m, 0));
+    const Value *expected = apply_value(&m, fn, unknown);
+    cases_run++;
+    ok = conv_values(&m, 1, apply_value(&m, copy, unknown), expected);
+    if (!ok)
+      fprintf(stderr, "FAIL reference: quoting %s preserves refusal propagation\n", labels[i]);
+  }
+  if (!ok && diag.set)
+    diag_print(&diag, stderr);
   arena_release(&arena);
   return ok;
 }
@@ -423,6 +458,7 @@ static int nat_literal_oom(void) {
 
 int main(void) {
   int failed = 0;
+  failed += !reference_quote();
   signal(SIGPIPE, SIG_IGN);
   failed += !nat_literal_oom();
   failed += !accepts("big Nat literal composition",
@@ -1338,10 +1374,69 @@ int main(void) {
     "def c : Path Nat (creditsCheck 18446744073709551616) 0 := refl\n", "EVAL_CREDITS_OVERFLOW");
   failed += !accepts("credits: creditsCheck at a variable is stuck",
     "def v : (n : Nat) -> Path Nat (creditsCheck n) (creditsCheck n) := fun n => refl\n");
-  failed += !domain_refuses("reference: refUnknown refuses a literal id", "",
-    "def r : Path Nat (refUnknown Nat 7) 0 := refl\n", "EVAL_REF_UNKNOWN");
-  failed += !accepts("reference: refUnknown at a variable id is stuck",
-    "def r : (n : Nat) -> Path Nat (refUnknown Nat n) (refUnknown Nat n) := fun n => refl\n");
+  failed += !domain_refuses("reference: refUnknown refuses a literal id",
+    "def ruAt : Nat -> Nat := fun (n : Nat) => refUnknown Nat n\n",
+    "def r : Path Nat (ruAt 7) 0 := refl\n", "EVAL_REF_UNKNOWN");
+  failed += !domain_accepts("reference: refUnknown at a variable id is stuck",
+    "def ruAt : Nat -> Nat := fun (n : Nat) => refUnknown Nat n\n",
+    "def r : (n : Nat) -> Path Nat (ruAt n) (ruAt n) := fun n => refl\n");
+  failed += !domain_accepts("reference: a fold over refUnknown at a variable id is refUnknown (S6R K3)",
+    "def ruL : Nat -> List Nat := fun (n : Nat) => refUnknown (List Nat) n\n",
+    "def r : (n : Nat) -> Path (List Nat) (fold (fun (b : Nat) (r : List Nat) => r) nil (ruL n)) (ruL n) := fun (n : Nat) => refl\n");
+  failed += !domain_accepts("reference: refUnknown at a function type, applied, is refUnknown (S6R K3)",
+    "def ruF : Nat -> Nat -> Nat := fun (n : Nat) => refUnknown (Nat -> Nat) n\n"
+    "def ruN : Nat -> Nat := fun (n : Nat) => refUnknown Nat n\n",
+    "def r : (n : Nat) -> Path Nat (ruF n 0) (ruN n) := fun (n : Nat) => refl\n");
+  failed += !domain_accepts("reference: withCard over refUnknown W is refUnknown W (S6R K3)",
+    "def ruW : Nat -> W := fun (n : Nat) => refUnknown W n\n",
+    "def r : (c : VirtuCard) -> Path W (withCard W (ruW (cardId c)) c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => worldNil)) (ruW (cardId c)) := fun (c : VirtuCard) => refl\n");
+  failed += !domain_accepts("reference: setSecurity twice at a card of the empty world (S6R K3)", "",
+    "def rzSecW : W -> VirtuCard -> SecurityLevel -> W := fun (w : W) (c : VirtuCard) (e : SecurityLevel) => withCard W w c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => worldSet w (cardId c) (cardI Empty o b e h))\n"
+    "def rzS4 : (c : VirtuCard) -> (l : SecurityLevel) -> (m : SecurityLevel) -> Path W (rzSecW (rzSecW worldNil c l) c m) (rzSecW worldNil c m) := fun (c : VirtuCard) (l : SecurityLevel) (m : SecurityLevel) => refl\n");
+  failed += !accepts("law use: L1 setSecurity at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (c : VirtuCard) -> (u : SecurityLevel) -> (v : SecurityLevel) -> (t : Virt X) -> (w : W) -> Path (Prod W X) (run X (setSecurity X c u (setSecurity X c v t)) w) (run X (setSecurity X c v t) w) :=\n  fun (X : Type 0) (c : VirtuCard) (u : SecurityLevel) (v : SecurityLevel) (t : Virt X) (w : W) => fun (i : I) => run X (wwSec X c u v t i) w\n");
+  failed += !accepts("world lemma: L1 setSecurity at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (c : VirtuCard) -> (u : SecurityLevel) -> (v : SecurityLevel) -> (t : Virt X) -> (w : W) -> Path (Prod W X) (run X (setSecurity X c u (setSecurity X c v t)) w) (run X (setSecurity X c v t) w) :=\n  fun (X : Type 0) (c : VirtuCard) (u : SecurityLevel) (v : SecurityLevel) (t : Virt X) (w : W) => fun (i : I) => run X t (secLaw c u v w @ i)\n");
+  failed += !accepts("law use: L2 setRarity at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (z : VirtualItem) -> (u : Rarity) -> (v : Rarity) -> (t : Virt X) -> (w : W) -> Path (Prod W X) (run X (setRarity X z u (setRarity X z v t)) w) (run X (setRarity X z v t) w) :=\n  fun (X : Type 0) (z : VirtualItem) (u : Rarity) (v : Rarity) (t : Virt X) (w : W) => fun (i : I) => run X (wwRar X z u v t i) w\n");
+  failed += !accepts("world lemma: L2 setRarity at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (z : VirtualItem) -> (u : Rarity) -> (v : Rarity) -> (t : Virt X) -> (w : W) -> Path (Prod W X) (run X (setRarity X z u (setRarity X z v t)) w) (run X (setRarity X z v t) w) :=\n  fun (X : Type 0) (z : VirtualItem) (u : Rarity) (v : Rarity) (t : Virt X) (w : W) => fun (i : I) => run X t (rarLaw z u v w @ i)\n");
+  failed += !accepts("law use: L3 avatarSet at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (a : Avatar) -> (k : Text) -> (u : Value) -> (v : Value) -> (t : Virt X) -> (w : W) -> Path (Prod W X) (run X (avatarSet X a k u (avatarSet X a k v t)) w) (run X (avatarSet X a k v t) w) :=\n  fun (X : Type 0) (a : Avatar) (k : Text) (u : Value) (v : Value) (t : Virt X) (w : W) => fun (i : I) => run X (wwASet X a k u v t i) w\n");
+  failed += !accepts("world lemma: L3 avatarSet at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (a : Avatar) -> (k : Text) -> (u : Value) -> (v : Value) -> (t : Virt X) -> (w : W) -> Path (Prod W X) (run X (avatarSet X a k u (avatarSet X a k v t)) w) (run X (avatarSet X a k v t) w) :=\n  fun (X : Type 0) (a : Avatar) (k : Text) (u : Value) (v : Value) (t : Virt X) (w : W) => asetLaw X a k u v (run X t) w\n");
+  failed += !accepts("law use: L3 itemSet at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (z : VirtualItem) -> (k : Text) -> (u : Value) -> (v : Value) -> (t : Virt X) -> (w : W) -> Path (Prod W X) (run X (itemSet X z k u (itemSet X z k v t)) w) (run X (itemSet X z k v t) w) :=\n  fun (X : Type 0) (z : VirtualItem) (k : Text) (u : Value) (v : Value) (t : Virt X) (w : W) => fun (i : I) => run X (wwISet X z k u v t i) w\n");
+  failed += !accepts("world lemma: L3 itemSet at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (z : VirtualItem) -> (k : Text) -> (u : Value) -> (v : Value) -> (t : Virt X) -> (w : W) -> Path (Prod W X) (run X (itemSet X z k u (itemSet X z k v t)) w) (run X (itemSet X z k v t) w) :=\n  fun (X : Type 0) (z : VirtualItem) (k : Text) (u : Value) (v : Value) (t : Virt X) (w : W) => isetLaw X z k u v (run X t) w\n");
+  failed += !accepts("law use: L4 avatarGet at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (a : Avatar) -> (k : Text) -> (v : Value) -> (f : Option Value -> Virt X) -> (w : W) -> Path (Prod W X) (run X (avatarSet X a k v (avatarGet X a k f)) w) (run X (avatarSet X a k v (f (some v))) w) :=\n  fun (X : Type 0) (a : Avatar) (k : Text) (v : Value) (f : Option Value -> Virt X) (w : W) => fun (i : I) => run X (wrASet X a k v f i) w\n");
+  failed += !accepts("world lemma: L4 avatarGet at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (a : Avatar) -> (k : Text) -> (v : Value) -> (f : Option Value -> Virt X) -> (w : W) -> Path (Prod W X) (run X (avatarSet X a k v (avatarGet X a k f)) w) (run X (avatarSet X a k v (f (some v))) w) :=\n  fun (X : Type 0) (a : Avatar) (k : Text) (v : Value) (f : Option Value -> Virt X) (w : W) => agetLaw X a k v (fun (o : Option Value) => run X (f o)) w\n");
+  failed += !accepts("law use: L4 itemGet at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (z : VirtualItem) -> (k : Text) -> (v : Value) -> (f : Option Value -> Virt X) -> (w : W) -> Path (Prod W X) (run X (itemSet X z k v (itemGet X z k f)) w) (run X (itemSet X z k v (f (some v))) w) :=\n  fun (X : Type 0) (z : VirtualItem) (k : Text) (v : Value) (f : Option Value -> Virt X) (w : W) => fun (i : I) => run X (wrISet X z k v f i) w\n");
+  failed += !accepts("world lemma: L4 itemGet at a variable world (S6R K7)",
+    "def r : (X : Type 0) -> (z : VirtualItem) -> (k : Text) -> (v : Value) -> (f : Option Value -> Virt X) -> (w : W) -> Path (Prod W X) (run X (itemSet X z k v (itemGet X z k f)) w) (run X (itemSet X z k v (f (some v))) w) :=\n  fun (X : Type 0) (z : VirtualItem) (k : Text) (v : Value) (f : Option Value -> Virt X) (w : W) => igetLaw X z k v (fun (o : Option Value) => run X (f o)) w\n");
+  failed += !accepts("world: two updates at a variable index (S6R R1)",
+    "def r : (n : Nat) -> (a : Instance) -> (b : Instance) -> (w : W) -> Path W (worldSet (worldSet w n a) n b) (worldSet w n b) := fun (n : Nat) (a : Instance) (b : Instance) (w : W) => worldSetTwice n a b b (fun (i : I) => b) w 0\n");
+  failed += !accepts("world: reading after an update preserves missing indices (S6R R1)",
+    "def r : (n : Nat) -> (a : Instance) -> (w : W) -> Path Instance (worldRead (worldSet w n a) n 0) (secRep a (worldRead w n 0)) := fun (n : Nat) (a : Instance) (w : W) => secWrRd n a w 0\n");
+  failed += !accepts("textEq: a variable key equals itself (S6R R4)",
+    "def r : (k : Text) -> Path (Option Unit) (textEq k k) (some unit) := fun (k : Text) => refl\n");
+  failed += !accepts("attributes: read a write at a variable key (S6R R4)",
+    "def r : (k : Text) -> (v : Value) -> (u : Value) -> Path (Option Value) (attrGet (attrSet (attrCons Unit (pair k u) attrNil) k v) k) (some v) := fun (k : Text) (v : Value) (u : Value) => refl\n");
+  failed += !domain_accepts("reference: option uses its result type (S6R K3)",
+    "def ro : Nat -> Option Nat := fun (n : Nat) => refUnknown (Option Nat) n\n"
+    "def rt : Nat -> Text := fun (n : Nat) => refUnknown Text n\n",
+    "def r : (n : Nat) -> Path Text (option \"none\" (fun (x : Nat) => \"some\") (ro n)) (rt n) := fun (n : Nat) => refl\n");
+  failed += !domain_accepts("reference: finCase uses its result type (S6R K3)",
+    "def rf : Nat -> Fin 2 := fun (n : Nat) => refUnknown (Fin 2) n\n"
+    "def rt : Nat -> Text := fun (n : Nat) => refUnknown Text n\n",
+    "def r : (n : Nat) -> Path Text (finCase 2 (rf n) \"zero\" \"one\") (rt n) := fun (n : Nat) => refl\n");
+  failed += !domain_refuses("reference: a program cannot name refUnknown in a def type (S6R D1)", "",
+    "def r : Path Nat (refUnknown Nat 7) 0 := refl\n", "REFUSE_REF_UNKNOWN");
+  failed += !domain_refuses("reference: a program cannot name refUnknown in a def body (S6R Q1)", "",
+    "def r : Nat := refUnknown Nat 7\n", "REFUSE_REF_UNKNOWN");
   failed += !domain_refuses("reference: refUnknown takes A : Type 0 only", "",
     "def z : Type 0 := refUnknown (Type 0) 3\n", "TYPE_MISMATCH");
   failed += !accepts("law L5 rrName: the law in Virt and its runner path at a variable world (S6)",
@@ -1400,22 +1495,22 @@ int main(void) {
     "def lzRun : (X : Type 0) -> (a : VirtualItem) -> (k : Text) -> (f : Prod (Option Value) (Option Value) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (itemGet X a k (fun (x : Option Value) => itemGet X a k (fun (y : Option Value) => f (pair x y)))) w) (run X (itemGet X a k (fun (x : Option Value) => f (pair x x))) w) :=\n"
     "  fun (X : Type 0) (a : VirtualItem) (k : Text) (f : Prod (Option Value) (Option Value) -> Virt X) (w : W) => fun (i : I) => run X (rrIGet X a k f i) w\n");
   failed += !accepts("law L1 at a closed world, setSecurity (S6)",
-    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) worldNil)\n"
     "def pzL1c : (l : SecurityLevel) -> (m : SecurityLevel) -> Path (Prod W Unit) (run Unit (setSecurity Unit (cardRef Empty 1) l (setSecurity Unit (cardRef Empty 1) m (pure unit))) pzW) (run Unit (setSecurity Unit (cardRef Empty 1) m (pure unit)) pzW) := fun (l : SecurityLevel) (m : SecurityLevel) => refl\n");
   failed += !accepts("law L2 at a closed world, setRarity (S6)",
-    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) worldNil)\n"
     "def pzL2c : (r : Rarity) -> (s : Rarity) -> Path (Prod W Unit) (run Unit (setRarity Unit (itemRef Empty 2) r (setRarity Unit (itemRef Empty 2) s (pure unit))) pzW) (run Unit (setRarity Unit (itemRef Empty 2) s (pure unit)) pzW) := fun (r : Rarity) (s : Rarity) => refl\n");
   failed += !accepts("law L3 at a closed world, avatarSet (S6)",
-    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) worldNil)\n"
     "def pzL3cLit : (v : Value) -> (u : Value) -> Path (Prod W Unit) (run Unit (avatarSet Unit (avatarRef Empty 0) \"g\" v (avatarSet Unit (avatarRef Empty 0) \"g\" u (pure unit))) pzW) (run Unit (avatarSet Unit (avatarRef Empty 0) \"g\" u (pure unit)) pzW) := fun (v : Value) (u : Value) => refl\n");
   failed += !accepts("law L3 at a closed world, itemSet (S6)",
-    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) worldNil)\n"
     "def pzL3cItem : (v : Value) -> (u : Value) -> Path (Prod W Unit) (run Unit (itemSet Unit (itemRef Empty 2) \"g\" v (itemSet Unit (itemRef Empty 2) \"g\" u (pure unit))) pzW) (run Unit (itemSet Unit (itemRef Empty 2) \"g\" u (pure unit)) pzW) := fun (v : Value) (u : Value) => refl\n");
   failed += !accepts("law L4 at a closed world, avatarSet (S6)",
-    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) worldNil)\n"
     "def pzL4cLit : (v : Value) -> (f : Option Value -> Virt Unit) -> Path (Prod W Unit) (run Unit (avatarSet Unit (avatarRef Empty 0) \"g\" v (avatarGet Unit (avatarRef Empty 0) \"g\" f)) pzW) (run Unit (avatarSet Unit (avatarRef Empty 0) \"g\" v (f (some v))) pzW) := fun (v : Value) (f : Option Value -> Virt Unit) => refl\n");
   failed += !accepts("law L4 at a closed world, itemSet (S6)",
-    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) worldNil)\n"
     "def pzL4cItem : (v : Value) -> (f : Option Value -> Virt Unit) -> Path (Prod W Unit) (run Unit (itemSet Unit (itemRef Empty 2) \"g\" v (itemGet Unit (itemRef Empty 2) \"g\" f)) pzW) (run Unit (itemSet Unit (itemRef Empty 2) \"g\" v (f (some v))) pzW) := fun (v : Value) (f : Option Value -> Virt Unit) => refl\n");
   failed += !accepts("law 2-dim: the fold path case at an inner point, variable t (S6 W5)",
     "cell SecC (X : Type 0) := setS : (setSA : Nat) -> (setST : X) -> X\n"

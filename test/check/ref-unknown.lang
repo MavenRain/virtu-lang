@@ -1,2 +1,4 @@
 -- A closed term with an unknown reference id: the conversion evaluates it.
-def lost : Path Nat (avatarId (refUnknown Avatar 7)) 7 := refl
+-- The library names refUnknown (S6R Q1): instanceAt at the empty world.
+def e : W := worldNil
+def lost : Path Instance (instanceAt e 7) (instanceAt e 7) := refl

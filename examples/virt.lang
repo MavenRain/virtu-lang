@@ -1,8 +1,8 @@
 -- The Virt library (S5, K9): each of the 28 0-cells of Virt through run,
 -- from the empty world. resultOf gives the result, worldOf the world.
 -- main is the PLAN section 6 program; test/json/virt.json is its document.
-def resultOf : (X : Type 0) -> Virt X -> X := fun (X : Type 0) (p : Virt X) => second (run X p nil)
-def worldOf : Virt Unit -> W := fun (p : Virt Unit) => first (run Unit p nil)
+def resultOf : (X : Type 0) -> Virt X -> X := fun (X : Type 0) (p : Virt X) => second (run X p worldNil)
+def worldOf : Virt Unit -> W := fun (p : Virt Unit) => first (run Unit p worldNil)
 -- An avatar "Ada" with a new card of m credits.
 def startCard : (R : Type 0) -> Credits -> (Avatar -> VirtuCard -> Virt R) -> Virt R :=
   fun (R : Type 0) (m : Credits) (k : Avatar -> VirtuCard -> Virt R) =>
@@ -89,4 +89,4 @@ def main : Virt Unit := avatar Unit "Ada" explorer (fun (a : Avatar) =>
   createVirtucard Unit a 100 (fun (c : VirtuCard) => attachCard Unit a c (setSecurity Unit c (high Empty)
   (terminal Unit "Bazaar" "tools" (fun (t : VirtualTerminal) => listItem Unit t "Lamp" 20 "a lamp"
   (avatarSet Unit a "guild" "north" (purchase Unit t "Lamp" c (fun (o : Option VirtualItem) => pure unit))))))))
-def worldSize : Nat := listSize Instance (worldOf main)
+def worldSize : Nat := worldCount (worldOf main)

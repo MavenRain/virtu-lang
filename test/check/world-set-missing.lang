@@ -1,0 +1,2 @@
+-- Updating an absent index does not create a world entry.
+def missing : (x : Instance) -> Path (Option Instance) (worldAt (worldSet worldNil 2 x) 2) (some x) := fun (x : Instance) => refl

@@ -1,0 +1,4 @@
+-- textEq compares two neutral texts by conversion at the current level:
+-- g (fun x => x) is not g (fun y => w), thus the claim is PATH_END (S6R X6).
+def x6 : (w : Text) -> (g : (Text -> Text) -> Text) -> Path (Option Unit) (textEq (g (fun (x : Text) => x)) (g (fun (y : Text) => w))) (some unit) :=
+  fun (w : Text) (g : (Text -> Text) -> Text) => refl

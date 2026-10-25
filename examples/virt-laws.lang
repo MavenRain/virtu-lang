@@ -9,8 +9,8 @@ def lawsRun : (c : VirtuCard) -> (w : W) -> Path (Prod W Unit) (run Unit (cardBa
   fun (c : VirtuCard) (w : W) => fun (i : I) => run Unit (rrBal Unit c (lawsK c) i) w
 -- The two ends of the law at a closed world give the same value.
 def readTwo : Credits := second (run Credits (avatar Credits "Ada" explorer (fun (a : Avatar) =>
-  createVirtucard Credits a 5 (fun (c : VirtuCard) => rrBal Credits c (fun (p : Prod Credits Credits) => pure (creditsAdd (first p) (second p))) i0))) nil)
+  createVirtucard Credits a 5 (fun (c : VirtuCard) => rrBal Credits c (fun (p : Prod Credits Credits) => pure (creditsAdd (first p) (second p))) i0))) worldNil)
 def readOne : Credits := second (run Credits (avatar Credits "Ada" explorer (fun (a : Avatar) =>
-  createVirtucard Credits a 5 (fun (c : VirtuCard) => rrBal Credits c (fun (p : Prod Credits Credits) => pure (creditsAdd (first p) (second p))) i1))) nil)
+  createVirtucard Credits a 5 (fun (c : VirtuCard) => rrBal Credits c (fun (p : Prod Credits Credits) => pure (creditsAdd (first p) (second p))) i1))) worldNil)
 def main : Virt Unit := avatar Unit "Ada" explorer (fun (a : Avatar) =>
   createVirtucard Unit a 5 (fun (c : VirtuCard) => rrBal Unit c (lawsK c) i0))

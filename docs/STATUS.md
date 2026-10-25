@@ -687,3 +687,116 @@ Notes:
 - W3: `v->inst - base == done` is true only when a boundary term of the constructor at slot `done` names that constructor, and the name of a constructor is not in scope in its own boundary (k3.lang). A boundary cannot name a later 1-cell (open point 5), and a later 0-cell gets past `check` when no fold runs (F11, open point 7). Thus W3 is likely an equivalent mutant. This is not proven.
 - W5: the 7 other rows that fail on the mutant are older fold rows: "Glue endpoint substitution preserves interval connections", "fold boundary maps a point constructor continuation", "fold boundary maps a point constructor path field", "map through a path cell at a variable interval round-trips", "cell map preserves earlier path and square boundary cases", "cell bind preserves earlier path and square boundary cases", "cong at i1 of a fold with a neutral path case reads the i1 end".
 - W6: path_value_ok has one caller, rebuild_ok (check.c:927), and the case that it checks is cell_rebuild (check.c:942), which the kernel writes. The PATH_END of the three killers comes from end_fail (check.c:472) by another caller. Thus W6 is an equivalent mutant at a correct cell_rebuild (the class of S5 U2).
+
+## S6R
+
+S6R does the routes R1 to R4 of PLAN 5.3. It gives the proofs of L1 to L4 at a variable world and adds L1 to L4 as 6 1-cells of `Virt`, with a path case in `run` for each. Thus O23 (a) is complete. The kickoff proposals K1 to K11 and the questions Q1 to Q3 are all (a) (docs/PLAN.md, `### USER ruling (S6R kickoff)`). Two more rulings came during the build: Q-S6R-s9-1 (i) and Q-S6R-s11-1 (a) (PLAN section 1). The claims C26 to C28 are in ~/Documents/virtu-lang-work/S6R-claims.md. The build records are in ~/Documents/virtu-lang-work/s6r-build/ (outside the repo, below: B). src/ changes in check.c, eval.c and json.c.
+
+### Gate (original build)
+
+`make -B -j 2 check` exits 0 (log ~/Documents/virtu-lang-work/s6r-build/s16-gate.log). The part logs come from runs on the main checkout after chunk B: B/s12-main-gate.log (`sh test/gate.sh`, `gate: 0 failures`), B/s12-main-pr.log (path regressions), B/s15-main-regressions.log and B/s15-main-printer.log (rc 0 each). The S6 pin is 0966438 (tree 4a6fea35; gate log s6-build/gate.log).
+
+| gate line | S6 (pin) | K9 | S6R | difference and cause |
+|---|---|---|---|---|
+| examples | 40 | 41 | 40 | none: no new example (D2) |
+| parse refusals | 16 | 16 | 16 | none |
+| check refusals | 130 | 133 | 132 | +2: test/check/ref-unknown-program.lang (Q1) and test/check/x6.lang (K4); 2 files of K7 are not in (D3) |
+| evals | 212 | 212 + n | 212 | none (n = 0): no new example (D2) |
+| json (builds) | 40 | 41 | 40 | none: no new golden (D2) |
+| build refusals | 8 | 8 | 8 | none |
+| regressions | 6 | 6 | 6 | none |
+| printer regressions | 2 | 2 | 2 | none |
+| path regressions | 255 | about 273 | 261 | +6 rows (Added tests); the K7 law use and lemma rows are not in (D3) |
+
+Five lines are not equal to the K9 prediction: examples, evals and json (D2), check refusals and path regressions (D3). B/s5-gate-main.log (S6R build s5, the main checkout before K1) has check refusals 131, not 130: test/check/ref-unknown-program.lang came in S6R build s3. The S6 column is the S6 pin.
+
+### K rows
+
+- K1: the world is the list cell `WorldC` (`W := WorldC Unit`; the empty world `worldNil` is `pure unit`), and `Attributes` is the list cell `AttrC`. The list functions over the world and the attributes are folds over the cells. world_json (src/json.c) walks the cells. The JSON goldens did not change: after K1, the `sh test/gate.sh` output of main and of the scratch copy were byte-equal (S6R build s7). The kernel gets no `List` eliminator. The examples change only for the cell world: `nil` to `worldNil` (examples/virt.lang, examples/virt-laws.lang) and `listSize Instance` to `worldCount` (examples/virt.lang).
+- K2: the library has a Bool cell, and the compares `natEqB` and `textEqB` give it. The domain has `Bool := Fin 2` already, thus the cell takes new names. The world lemmas split by `elim` on the Bool cell. The kernel gets no rule for `natEq n n`.
+- K3: a refusal stays a refusal. The kernel propagates `refUnknown` at a neutral scrutinee (PLAN section 3, R3). The result type comes from the motive. The family fold (`fold_family`, eval.c:1004) has the rule. `elim_family` (eval.c:1158) also has it, at the motive applied to the scrutinee; K3 did not name this site (D4). Conv of two `refUnknown` values is the generic structural conv of stuck values (eval.c:2158, `case OP_REF_UNKNOWN:` with the other stuck ops): it compares the type and the id. K3 said "by their ids". This is a fact, not a defect.
+- K4: `textEq t u` gives `some unit` when `t` and `u` are convertible, at the conv level of the machine. test/check/x6.lang is the refusal row: `g (fun x => x)` and `g (fun y => w)` are not convertible, thus the claim is PATH_END. In S6R build s3, a mutant of the conv level (`conv_values(m, 0u, a[0], a[1])` in text_eq) accepted the file (rc 0). The file name comes from that s3 probe. It is not the X6 of the mutant table below.
+- K5: the build order was the order of S6R-build-PROMPT.md: chunk A (K4, K3 with Q1), then K2 with K1 in one patch (B/s5-k1-patch.py), then the world lemmas and the 6 1-cells (chunk B, B/s8-b-patch.py). K5 said K2, K1, K4, K3 (D5).
+- K6: `Virt` gets 6 1-cells after the 11 L5 1-cells and before `pure`: `wwSec` (L1), `wwRar` (L2), `wwASet` and `wwISet` (L3), `wrASet` and `wrISet` (L4). `Virt` has 46 constructors: 28 0-cells, 17 1-cells and `pure`. The fold of `run` has 46 cases, thus 47 fold arguments with the scrutinee, under SPINE_MAX 64. Each new path case of `run` applies a world lemma at a variable world: `secLaw` (L1), `rarLaw` (L2), `asetLaw` and `isetLaw` (L3), `agetLaw` and `igetLaw` (L4) (domain/domain.lang, defs :480, :544, :711, :723, :737 and :749; run cases :834 to :845). The case of L1 or L2 is `k (lemma ... w @ i)`. The case of L3 or L4 is the lemma path at `i`, with the continuation in the lemma. `attrSet` is restated with the one fold `attrSetF` over the `AttrC` cell (Q-S6R-s9-1 (i), S6R build s10). The other options were (ii) a kernel `Option` elim and (iii) a restriction of the lemmas.
+- K7: see Added tests (K7) below.
+- K8: see Mutants (K8) below: 6 of 6 KILLED.
+- K9: the gate above.
+- K10: the PLAN edits: section 1 (`### USER ruling (S6R kickoff)` and the two build rulings); section 3 (a soundness note for each kernel rule; R3 names the fold and `elim` over a domain family); 5.3 (the S6R paragraph with the 6 1-cells, the routes and the world lemmas; the sentence on two different `refUnknown` neutrals is an S6 statement now, and the row `reference: setSecurity twice at a card of the empty world (S6R K3)` shows that the two sides of L1 are convertible at the empty world and a variable card); section 7 (the S6R row, Built).
+- K11: the S6 open points 7 and 10 stay. F20 is open point 6 below.
+- Q1 (a): `check` refuses `refUnknown` in a program with the new code REFUSE_REF_UNKNOWN. Only the domain library names it. D1 is the hole of the first form.
+- Q2 (a): `W` and `Attributes` changed to cells in one slice (K1).
+- Q3 (a): the R3 route is K3 (a).
+- Q-S6R-s11-1 (a): the arena of `accepts()` in test/path-regressions.c is 512 MB (it was 128 MB), in the test only. After chunk B, the row `law L5 2-dim: run of rrBal at an inner point (S6)` needed more than 128 MB. The cost: the path regressions run of main took 5.96 s with max RSS 285792 before chunk B (S6R build s11) and 15.99 s with max RSS 592384 after chunk B with the 512 MB arena (B/s12-run1.out; zsh `%M` units). The CLI arena (1 GB, src/main.c) does not change: `langc check` of that row as a program (B/s13-lz2.lang) gives rc 0 in 0.29 s, max RSS 414752. The control B/s13-lz2-bad.lang gives rc 1 TYPE_MISMATCH. B/s13-lz2-neg.lang (rc 0) is not a control: `run` at `w` reads the same balance for the two reads, thus the two ends are convertible and the row body `refl` is correct.
+
+### Added tests (K7, original build)
+
+- test/check, 2 files: ref-unknown-program.lang (REFUSE_REF_UNKNOWN: a program names `refUnknown` in a def type, Q1 and D1) and x6.lang (PATH_END: the K4 refusal row).
+- test/check/ref-unknown.lang keeps its code. It now gets `refUnknown` through the library only (Q1).
+- test/path-regressions.c, 6 rows: the 4 K3 rows "reference: a fold over refUnknown at a variable id is refUnknown (S6R K3)", "reference: refUnknown at a function type, applied, is refUnknown (S6R K3)", "reference: withCard over refUnknown W is refUnknown W (S6R K3)" and "reference: setSecurity twice at a card of the empty world (S6R K3)"; the D1 row "reference: a program cannot name refUnknown in a def type (S6R D1)"; the Q1 row "reference: a program cannot name refUnknown in a def body (S6R Q1)".
+- K1 changed the closed worlds of the old rows from `nil` to `worldNil` (for example the world `pzW` of the rows `law L1 to L4 at a closed world (S6)`). No row was removed.
+- The 6 world lemmas and the 6 run path cases are in domain/domain.lang. Each gate file loads the domain, thus each gate run checks them. The mutants X1 to X6 are killed at that check.
+
+### Deviations in the original build
+
+- D1 (found in S6R build s2, closed in s3, inside Q1 (a), no ruling needed): the first Q1 refusal fired only in a def body. check_def set the origin of the def after check_type, thus a program that named `refUnknown` in a def type passed. The fix: the Checker has an `origin` field, check_decl sets it at the start of each declaration, and rule_ref_unknown reads it. The D1 row and test/check/ref-unknown-program.lang hold it.
+- D2 (closed in staged review below): K7 named one example with a law use at a variable world and its JSON golden. S6R adds no example: examples 40, evals 212 (n = 0) and json 40. The S6R build records (the prompts S6R-build-s2 to s15) give no reason for this. Thus it is a gap against K7 (a), not a ruling (open point 8).
+- D3 (closed in staged review below): K7 named tests that are not in. Check refusals: the false list lemma (the r1a-known-nil form, PATH_END) and `elim` on `List` (the r1b form, TYPE_MISMATCH) are not in test/check. x6.lang (K4) is in, and K7 did not name it. Thus 132, not 133 (130 + Q1 + x6.lang; the S6R build s4 note counted 134 with the two files). Path regressions: the 4 K3 rows and the D1 and Q1 rows are in. These K7 rows are not in: the 6 law uses, the 6 world lemmas at a variable world, the r1a-form rows and the R4 rows (r4-kk, r4-attr). The domain check covers the 6 lemmas and the 6 run path cases (Added tests). Thus 261, not about 273 (open point 8).
+- D4: K3 named the List fold, the family fold, the Option elim, `finCase` and apply_value. `elim_family` (eval.c:1158) also propagates `refUnknown`. This is an extension of K3. PLAN section 3 R3 names it (S6R build s14).
+- D5: the build order is not the K5 order (K5 above).
+
+### Open points (S6R-build-PROMPT.md)
+
+1. The conv level of the K4 rule is the level of the machine. x6.lang refuses the level-0 mutant (K4).
+2. The R3 type slot: the motive at the family fold and the result type at a nondependent fold. Conv compares the type and the id (K3).
+3. The world lemmas check at each gate file (each gate file loads the domain). The split of each lemma is in domain/domain.lang.
+4. Fuel: no gate file stops at EVAL_FUEL_STEPS (the gate has 0 failures). The time of the path regressions run grew (Q-S6R-s11-1 (a)).
+5. The JSON goldens are byte-equal after the cell world (K1).
+6. F20: for a program, Q1 (a) closes it. The S6R build s4 probes through the library (before K1) each refuse: f20a (`withCard (Path Nat 0 1) nil (cardRef Empty 7) f`, the body of f is `refl`) gives PATH_END; f20b (the body of f is `refUnknown`) gives REFUSE_REF_UNKNOWN; f20c (a large elim on `instanceAt nil 7`, checked at `Path Nat 0 1`) gives EVAL_REF_UNKNOWN; f20d (the same term at the type `m20 (instanceAt nil 7)`) gives EVAL_REF_UNKNOWN. For the terms of the domain library, F20 stays open (PLAN section 3, K11).
+7. The S6 open points 7 (F11) and 10 (S5 open point 9, the S5 mutants U1 to U10) stay (K11).
+8. D2 and D3 are closed by the staged review below: the example, golden, refusal files and K7 path regression rows are now included.
+
+### Mutants (K8)
+
+The mutant script is B/s12-mutant.py (argv[1] = the root of a scratch copy, argv[2] = X1 to X6). The runner is B/s12-run2.zsh (output B/s12-run2.out; make logs B/s12-mut-X1-make.log to B/s12-mut-X6-make.log). Scratch: B/s12mut, a copy of the main checkout. Each mutant changes one new path case of `run` in domain/domain.lang. For each mutant: the anchor has exactly 1 match, make with rc 0, `langc check` of a tiny program that loads the domain (the domain check is the killer), and the restore. After the last restore: make rc 0, the tiny check gives `ok`, and the domain of the scratch is equal to main (cmp rc 0). Result: 6 of 6 KILLED.
+
+| id | site | mutation | killer | base | mutant | result |
+|---|---|---|---|---|---|---|
+| X1 | domain/domain.lang:835, the `wwSec` case | `k (secLaw c u v w @ i))` to `k (secLaw c v u w @ i))` | the domain check | rc 0 | rc 1 PATH_END: "run: the path at i0 is ..." | KILLED |
+| X2 | domain.lang:837, the `wwRar` case | `k (rarLaw z u v w @ i))` to `k (rarLaw z v u w @ i))` | the domain check | rc 0 | rc 1 PATH_END at i0 | KILLED |
+| X3 | domain.lang:839, the `wwASet` case | `asetLaw X a y u v k w @ i)` to `asetLaw X a y v u k w @ i)` | the domain check | rc 0 | rc 1 PATH_END at i0 | KILLED |
+| X4 | domain.lang:841, the `wwISet` case | `isetLaw X z y u v k w @ i)` to `isetLaw X z y v u k w @ i)` | the domain check | rc 0 | rc 1 PATH_END at i0 | KILLED |
+| X5 | domain.lang:843, the `wrASet` case | the case body `fun (i : I) => fun (w : W) => agetLaw X a y v f w @ i` to `refl` | the domain check | rc 0 | rc 1 PATH_END at i1 | KILLED |
+| X6 | domain.lang:845, the `wrISet` case | the case body `fun (i : I) => fun (w : W) => igetLaw X z y v f w @ i` to `refl` | the domain check | rc 0 | rc 1 PATH_END at i1 | KILLED |
+
+Notes:
+
+- X1 to X4 swap the two written values `u` and `v` of a write-write law. X5 and X6 make a write-read case a constant path. The check gives the first end that fails.
+- S6R chunk C has no mutant of src/. The kernel rules have rows (Added tests). The S6R build s3 probe of the K4 conv level (K4 above) is the only kernel mutant of S6R.
+
+### Staged review (2026-10-25)
+
+MEDIUM, fixed: quoting a neutral Option elimination or List fold lost the
+result type added for K3. Applying the quoted function to a stuck
+`refUnknown` then left the eliminator stuck, while applying the original
+function propagated the refusal. eval.c now retains the result type in
+the neutral value and restores it in `quote_op`. A List fold retains the
+type on its neutral tail before applying the constructor steps.
+
+The C regressions compare original and quoted functions for Option,
+List and a List with a constructor prefix. They pass on HEAD, fail on the
+original staged evaluator and pass with the fix.
+
+D2 and D3 are closed by this review. examples/virt-write-laws.lang has a
+write-read law at a variable world, its JSON golden and two eval rows
+(both ends observe "east"). The two refusal files are
+test/check/world-set-missing.lang (the false empty-world update lemma,
+PATH_END) and test/check/list-elim.lang (TYPE_MISMATCH). Path regressions
+add the six law uses and six world lemma applications at variable worlds,
+two world update/read rows, the two R4 rows, and Option and finCase
+refusal propagation with a result type different from the scrutinee type.
+
+Validation: `make -B -j 2 check` exits 0. Examples 41, parse refusals 16,
+check refusals 134, evals 214, JSON builds 41, build refusals 8,
+regressions 6, printer regressions 2 and path regressions 282. The original
+gate and deviations above record the build before this review. No CI
+check was removed or weakened. No remaining review blocker.

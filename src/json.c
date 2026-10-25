@@ -878,25 +878,41 @@ static int list_state(Out *o, const Value *elem, const Value *v, const StateKey 
   return val_is(cell, OP_NIL) ? put_text(o, "]") : internal(o, "a List value that is not nil or cons");
 }
 
-/* attributes (K6): a List of Text pairs as an object in List order. The
-   library keeps a key at the place where it was first set. */
+/* The constructor of the list cell value V when its name is NAME (S6R K1):
+   a cons 0-cell with the parameter X, the head and the tail. Else NULL. */
+static int cell_pure(const Machine *m, const Value *v) {
+  const FamilyInfo *family;
+  if (!val_is(v, OP_CTOR) || v->inst >= m->ctor_count)
+    return 0;
+  family = &m->families[m->ctors[v->inst].family];
+  return family->cell && v->inst == family->first_ctor + family->ctor_count - 1u && v->argc == family->param_count + 1u;
+}
+
+static const CtorInfo *cons_cell(const Machine *m, const Value *v, const char *name) {
+  const CtorInfo *ci = val_is(v, OP_CTOR) && v->inst < m->ctor_count ? &m->ctors[v->inst] : NULL;
+  return ci != NULL && strcmp(ci->name, name) == 0 && ci->field_count == 2u && v->argc == 3u ? ci : NULL;
+}
+
+/* attributes (K6, S6R K1): an AttrC cell of Text pairs as an object in cell
+   order. The library keeps a key at the place where it was first set. */
 static int attrs_json(Out *o, const Value *type, const Value *v) {
-  const Value *pt = val_is(type, OP_LIST) ? type->args[0] : NULL;
   const Value *cell = v;
   int first = 1;
-  int ok = val_is(pt, OP_PROD) && val_is(pt->args[0], OP_TEXT) ? put_text(o, "{")
-    : internal(o, "attributes that are not a List of Text pairs");
-  while (ok && val_is(cell, OP_CONS)) {
-    const Value *p = cell->args[0];
-    ok = ready(o, p) && (val_is(p, OP_PAIR) ? 1 : internal(o, "an attribute that is not a pair"))
+  int ok = val_is(type, OP_FAMILY) && type->inst < o->m->family_count && strcmp(o->m->families[type->inst].name, "AttrC") == 0
+    ? put_text(o, "{") : internal(o, "attributes that are not an AttrC cell");
+  while (ok && cons_cell(o->m, cell, "attrCons") != NULL) {
+    const Value *pt = eval_core(o->m, env_push(o->m, NULL, cell->args[0]), cons_cell(o->m, cell, "attrCons")->fields[0].type);
+    const Value *p = cell->args[1];
+    ok = ready(o, p) && (val_is(pt, OP_PROD) && val_is(pt->args[0], OP_TEXT) ? 1 : internal(o, "an attribute type that is not a Text pair"))
+      && (val_is(p, OP_PAIR) ? 1 : internal(o, "an attribute that is not a pair"))
       && (first || put_text(o, ",")) && value_json(o, pt->args[0], p->args[0]) && put_text(o, ":")
-      && state_json(o, pt->args[1], p->args[1]) && ready(o, cell->args[1]);
-    cell = cell->args[1];
+      && state_json(o, pt->args[1], p->args[1]) && ready(o, cell->args[2]);
+    cell = ok ? cell->args[2] : cell;
     first = 0;
   }
   if (!ok)
     return 0;
-  return val_is(cell, OP_NIL) ? put_text(o, "}") : internal(o, "a List value that is not nil or cons");
+  return cell_pure(o->m, cell) ? put_text(o, "}") : internal(o, "an AttrC value that is not pure or attrCons");
 }
 
 /* A state value (K6): an enumeration is its name, a reference its id, an
@@ -981,13 +997,14 @@ static uint32_t def_index(const Machine *m, const char *name, int program) {
   return m->def_count;
 }
 
-/* K5: run Unit main nil, from the empty world. The result is a pair of the
-   final world and unit. The world is a List of Instance values in run
-   order, and the id of an instance is its place. */
+/* K5: run Unit main worldNil, from the empty world. The result is a pair of
+   the final world and unit. The world is a WorldC cell of Instance values in
+   run order (S6R K1), and the id of an instance is its place. */
 static int world_json(Out *o, uint32_t main_index, char *type_text) {
   Machine *m = o->m;
   const DefInfo *d = &m->defs[main_index];
   uint32_t run_index = def_index(m, "run", 0);
+  uint32_t nil_index = def_index(m, "worldNil", 0);
   const Value *r;
   const Value *cell;
   uint32_t id = 0;
@@ -1000,24 +1017,26 @@ static int world_json(Out *o, uint32_t main_index, char *type_text) {
   }
   if (run_index == m->def_count)
     return diag_fail(m->diag, "JSON_MAIN_RUN", d->name, "the library has no def run for main");
+  if (nil_index == m->def_count)
+    return diag_fail(m->diag, "JSON_MAIN_RUN", d->name, "the library has no def worldNil for main");
   m->def = d->name;
   m->fuel = EVAL_FUEL_STEPS;
   m->depth = 0;
   r = def_value(m, run_index);
   r = apply_value(m, r, val_make(m, OP_UNIT, 0, 0, NULL, NULL, NULL));
   r = apply_value(m, r, def_value(m, main_index));
-  r = apply_value(m, r, val_make(m, OP_NIL, 0, 0, NULL, NULL, NULL));
+  r = apply_value(m, r, def_value(m, nil_index));
   if (r == NULL)
     return m->diag->set ? 0 : internal(o, "a run with no value");
   ok = ready(o, r) && (val_is(r, OP_PAIR) ? 1 : internal(o, "a run result that is not a pair"));
   cell = ok ? r->args[0] : NULL;
   ok = ok && ready(o, cell) && put_text(o, "{") && put_string(o, LANG_NAME) && put_text(o, ":1,\"instances\":[");
-  while (ok && val_is(cell, OP_CONS)) {
-    ok = world_item_json(o, cell->args[0], id) && ready(o, cell->args[1]);
-    cell = cell->args[1];
+  while (ok && cons_cell(m, cell, "worldCons") != NULL) {
+    ok = world_item_json(o, cell->args[1], id) && ready(o, cell->args[2]);
+    cell = cell->args[2];
     id++;
   }
-  return ok && (val_is(cell, OP_NIL) ? 1 : internal(o, "a world that is not nil or cons")) && put_text(o, "]}\n");
+  return ok && (cell_pure(m, cell) ? 1 : internal(o, "a world that is not worldNil or worldCons")) && put_text(o, "]}\n");
 }
 
 int json_document(Machine *m, const char **text, size_t *len) {

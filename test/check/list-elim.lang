@@ -1,0 +1,3 @@
+-- The builtin List has a fold, but no dependent eliminator.
+def noListElim : (xs : List Nat) -> Nat := fun (xs : List Nat) =>
+  elim (fun (d : List Nat) => Nat) (fun (x : Nat) (t : List Nat) (ih : Nat) => succ ih) 0 xs

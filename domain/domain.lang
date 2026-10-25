@@ -260,7 +260,20 @@ def multiplier : Rarity -> Credits := fun (r : Rarity) => fold 1 2 4 8 16 (fun (
 -- The records and the world (K4). An Instance holds the state record of
 -- PLAN section 4. W is in run order, and the id of an instance is its
 -- position in W.
-def Attributes : Type 0 := List (Prod Text Value)
+-- S6R K2: a library Bool cell. A world lemma splits by elim on it, as
+-- elim on Fin 2 is not a kernel rule (F16).
+cell BoolC (X : Type 0) := trueC : Unit -> X
+def BoolB : Type 0 := BoolC Unit
+def trueB : BoolB := trueC Unit unit
+def falseB : BoolB := pure unit
+def ifB : (A : Type 0) -> BoolB -> A -> A -> A := fun (A : Type 0) (b : BoolB) (t : A) (f : A) => fold (fun (u : Unit) => t) (fun (u : Unit) => f) b
+def natEqB : Nat -> Nat -> BoolB := fun (a : Nat) (b : Nat) => finCase 2 (natEq a b) falseB trueB
+def textEqB : Text -> Text -> BoolB := fun (a : Text) (b : Text) => option falseB (fun (u : Unit) => trueB) (textEq a b)
+-- S6R K1: the world and Attributes are list cells, thus a world lemma is an
+-- elim on the cell (the kernel has no List eliminator).
+cell AttrC (X : Type 0) := attrCons : Prod Text Value -> X -> X
+def Attributes : Type 0 := AttrC Unit
+def attrNil : Attributes := pure unit
 def Entry : Type 0 := Prod EntryKind (Prod Credits Credits)
 def Listing : Type 0 := Prod Text (Prod Credits (Prod Text (Option VirtualItem)))
 cell InstanceC (X : Type 0) := avatarI : Text -> Role -> Option VirtuCard -> Attributes -> List VirtualItem -> X
@@ -268,7 +281,18 @@ cell InstanceC (X : Type 0) := avatarI : Text -> Role -> Option VirtuCard -> Att
   | terminalI : Text -> Text -> List Listing -> X
   | itemI : Text -> Text -> Credits -> Rarity -> Attributes -> X
 def Instance : Type 0 := InstanceC Empty
-def W : Type 0 := List Instance
+cell WorldC (X : Type 0) := worldCons : Instance -> X -> X
+def W : Type 0 := WorldC Unit
+def worldNil : W := pure unit
+def worldSnoc : W -> Instance -> W := fun (w : W) (a : Instance) =>
+  fold (fun (b : Instance) (r : W) => worldCons Unit b r) (fun (u : Unit) => worldCons Unit a worldNil) w
+def worldCount : W -> Nat := fun (w : W) => fold (fun (b : Instance) (r : Nat) => succ r) (fun (u : Unit) => 0) w
+def worldAtF : W -> Nat -> Nat -> Option Instance := fun (w : W) (n : Nat) =>
+  fold (fun (b : Instance) (r : Nat -> Option Instance) => fun (j : Nat) => ifB (Option Instance) (natEqB j n) (some b) (r (succ j))) (fun (u : Unit) => fun (j : Nat) => none) w
+def worldAt : W -> Nat -> Option Instance := fun (w : W) (n : Nat) => worldAtF w n 0
+def worldSetF : W -> Nat -> Instance -> Nat -> W := fun (w : W) (n : Nat) (a : Instance) =>
+  fold (fun (b : Instance) (r : Nat -> W) => fun (j : Nat) => worldCons Unit (ifB Instance (natEqB j n) a b) (r (succ j))) (fun (u : Unit) => fun (j : Nat) => worldNil) w
+def worldSet : W -> Nat -> Instance -> W := fun (w : W) (n : Nat) (a : Instance) => worldSetF w n a 0
 def listSnoc : (A : Type 0) -> List A -> A -> List A :=
   fun (A : Type 0) (l : List A) (a : A) => fold (fun (b : A) (r : List A) => cons b r) (cons a nil) l
 def listSize : (A : Type 0) -> List A -> Nat := fun (A : Type 0) (l : List A) => fold (fun (b : A) (r : Nat) => succ r) 0 l
@@ -281,15 +305,17 @@ def listDrop : (A : Type 0) -> List A -> Nat -> List A := fun (A : Type 0) (l : 
     (fun (j : Nat) => nil) l)
 -- attrSet keeps a key at the place of its first set (open point 8).
 def attrGet : Attributes -> Text -> Option Value := fun (l : Attributes) (k : Text) =>
-  fold (fun (p : Prod Text Value) (r : Option Value) => option r (fun (u : Unit) => some (second p)) (textEq (first p) k)) none l
-def attrSet : Attributes -> Text -> Value -> Attributes := fun (l : Attributes) (k : Text) (v : Value) =>
-  option (listSnoc (Prod Text Value) l (pair k v))
-    (fun (x : Value) => fold (fun (p : Prod Text Value) (r : Attributes) => cons (option p (fun (u : Unit) => pair k v) (textEq (first p) k)) r) nil l)
-    (attrGet l k)
+  fold (fun (p : Prod Text Value) (r : Option Value) => ifB (Option Value) (textEqB (first p) k) (some (second p)) r) (fun (u : Unit) => none) l
+-- attrSetF is one fold (Q-S6R-s9-1 (i)). The flag f says that k is found to the left. A match keeps the old key text.
+def attrSetF : Attributes -> Text -> Value -> BoolB -> Attributes := fun (l : Attributes) (k : Text) (v : Value) =>
+  fold (fun (p : Prod Text Value) (r : BoolB -> Attributes) => fun (f : BoolB) =>
+      attrCons Unit (pair (first p) (ifB Value (textEqB (first p) k) v (second p))) (r (ifB BoolB (textEqB (first p) k) trueB f)))
+    (fun (u : Unit) => fun (f : BoolB) => ifB Attributes f attrNil (attrCons Unit (pair k v) attrNil)) l
+def attrSet : Attributes -> Text -> Value -> Attributes := fun (l : Attributes) (k : Text) (v : Value) => attrSetF l k v falseB
 -- An id with no instance, or an instance of the wrong class, is the
 -- run-time refusal EVAL_REF_UNKNOWN (K2).
 def instanceAt : W -> Nat -> Instance := fun (w : W) (n : Nat) =>
-  option (fun (u : Unit) => refUnknown Instance n) (fun (a : Instance) (u : Unit) => a) (listAt Instance w n) unit
+  option (fun (u : Unit) => refUnknown Instance n) (fun (a : Instance) (u : Unit) => a) (worldAt w n) unit
 def withAvatar : (R : Type 0) -> W -> Avatar -> (Text -> Role -> Option VirtuCard -> Attributes -> List VirtualItem -> R) -> R :=
   fun (R : Type 0) (w : W) (a : Avatar) (f : Text -> Role -> Option VirtuCard -> Attributes -> List VirtualItem -> R) => fold f
     (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => refUnknown R (avatarId a))
@@ -316,11 +342,11 @@ def withItem : (R : Type 0) -> W -> VirtualItem -> (Text -> Text -> Credits -> R
     (fun (v : Empty) => absurd R v) (instanceAt w (itemId t))
 def avatarPut : W -> Avatar -> (Text -> Role -> Option VirtuCard -> Attributes -> List VirtualItem -> Instance) -> W :=
   fun (w : W) (a : Avatar) (f : Text -> Role -> Option VirtuCard -> Attributes -> List VirtualItem -> Instance) =>
-    listSet Instance w (avatarId a) (withAvatar Instance w a f)
+    worldSet w (avatarId a) (withAvatar Instance w a f)
 def terminalPut : W -> VirtualTerminal -> (Text -> Text -> List Listing -> Instance) -> W :=
-  fun (w : W) (t : VirtualTerminal) (f : Text -> Text -> List Listing -> Instance) => listSet Instance w (terminalId t) (withTerminal Instance w t f)
+  fun (w : W) (t : VirtualTerminal) (f : Text -> Text -> List Listing -> Instance) => worldSet w (terminalId t) (withTerminal Instance w t f)
 def itemPut : W -> VirtualItem -> (Text -> Text -> Credits -> Rarity -> Attributes -> Instance) -> W :=
-  fun (w : W) (t : VirtualItem) (f : Text -> Text -> Credits -> Rarity -> Attributes -> Instance) => listSet Instance w (itemId t) (withItem Instance w t f)
+  fun (w : W) (t : VirtualItem) (f : Text -> Text -> Credits -> Rarity -> Attributes -> Instance) => worldSet w (itemId t) (withItem Instance w t f)
 def avatarCheck : W -> Avatar -> Avatar := fun (w : W) (a : Avatar) =>
   withAvatar Avatar w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => a)
 def cardCheck : W -> VirtuCard -> VirtuCard := fun (w : W) (c : VirtuCard) =>
@@ -328,10 +354,10 @@ def cardCheck : W -> VirtuCard -> VirtuCard := fun (w : W) (c : VirtuCard) =>
 -- A card change adds one entry with the amount and the balance after it.
 def cardAdd : W -> VirtuCard -> Credits -> EntryKind -> W := fun (w : W) (c : VirtuCard) (m : Credits) (e : EntryKind) =>
   withCard W w c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) =>
-    listSet Instance w (cardId c) (cardI Empty o (creditsAdd b m) l (listSnoc Entry h (pair e (pair m (creditsAdd b m))))))
+    worldSet w (cardId c) (cardI Empty o (creditsAdd b m) l (listSnoc Entry h (pair e (pair m (creditsAdd b m))))))
 def cardSub : W -> VirtuCard -> Credits -> EntryKind -> Option W := fun (w : W) (c : VirtuCard) (m : Credits) (e : EntryKind) =>
   withCard (Option W) w c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) =>
-    option none (fun (d : Credits) => some (listSet Instance w (cardId c) (cardI Empty o d l (listSnoc Entry h (pair e (pair m d)))))) (creditsSub b m))
+    option none (fun (d : Credits) => some (worldSet w (cardId c) (cardI Empty o d l (listSnoc Entry h (pair e (pair m d)))))) (creditsSub b m))
 def cardTransfer : W -> VirtuCard -> VirtuCard -> Credits -> Option W := fun (w : W) (a : VirtuCard) (b : VirtuCard) (m : Credits) =>
   (fun (a : VirtuCard) (b : VirtuCard) => (fun (h : Unit -> Option W) => h unit) (finCase 2 (natEq (cardId a) (cardId b))
     (fun (u : Unit) => option none (fun (v : W) => some (cardAdd v b m (transferIn Empty))) (cardSub w a m (transferOut Empty)))
@@ -349,7 +375,7 @@ def purchaseIn : W -> VirtualTerminal -> Avatar -> Text -> VirtuCard -> Option (
             (avatarPut (terminalPut (first g) t (fun (a : Text) (b : Text) (x : List Listing) => terminalI Empty a b (listDrop Listing x (first f))))
               u (fun (a : Text) (r : Role) (o : Option VirtuCard) (xs : Attributes) (v : List VirtualItem) => avatarI Empty a r o xs (listSnoc VirtualItem v (second g))))
             (second g)))
-          (option (pair (listSnoc Instance w1 (itemI Empty (first (second f)) tc (first (second (second f))) (common Empty) nil)) (itemRef Empty (listSize Instance w1)))
+          (option (pair (worldSnoc w1 (itemI Empty (first (second f)) tc (first (second (second f))) (common Empty) attrNil)) (itemRef Empty (worldCount w1)))
             (fun (x : VirtualItem) => pair w1 x) (second (second (second (second f))))))
         (cardSub w c (first (second (second f))) (purchased Empty)))
       (listingFind s n))) (avatarCheck w u) (cardCheck w c)
@@ -397,15 +423,348 @@ cell Virt (X : Type 0) := avatar : Text -> Role -> (Avatar -> X) -> X
   | rrTInv : (rrTInvT : VirtualTerminal) -> (rrTInvF : Prod (List Listing) (List Listing) -> X) -> (i : I) -> X [ ~i -> terminalInventory X rrTInvT (fun (x : List Listing) => terminalInventory X rrTInvT (fun (y : List Listing) => rrTInvF (pair x y))), i -> terminalInventory X rrTInvT (fun (x : List Listing) => rrTInvF (pair x x)) ]
   | rrVal : (rrValZ : VirtualItem) -> (rrValF : Prod Credits Credits -> X) -> (i : I) -> X [ ~i -> itemValue X rrValZ (fun (x : Credits) => itemValue X rrValZ (fun (y : Credits) => rrValF (pair x y))), i -> itemValue X rrValZ (fun (x : Credits) => rrValF (pair x x)) ]
   | rrIGet : (rrIGetZ : VirtualItem) -> (rrIGetK : Text) -> (rrIGetF : Prod (Option Value) (Option Value) -> X) -> (i : I) -> X [ ~i -> itemGet X rrIGetZ rrIGetK (fun (x : Option Value) => itemGet X rrIGetZ rrIGetK (fun (y : Option Value) => rrIGetF (pair x y))), i -> itemGet X rrIGetZ rrIGetK (fun (x : Option Value) => rrIGetF (pair x x)) ]
+  | wwSec : (wwSecC : VirtuCard) -> (wwSecU : SecurityLevel) -> (wwSecV : SecurityLevel) -> (wwSecXk : X) -> (i : I) -> X [ ~i -> setSecurity X wwSecC wwSecU (setSecurity X wwSecC wwSecV wwSecXk), i -> setSecurity X wwSecC wwSecV wwSecXk ]
+  | wwRar : (wwRarZ : VirtualItem) -> (wwRarU : Rarity) -> (wwRarV : Rarity) -> (wwRarXk : X) -> (i : I) -> X [ ~i -> setRarity X wwRarZ wwRarU (setRarity X wwRarZ wwRarV wwRarXk), i -> setRarity X wwRarZ wwRarV wwRarXk ]
+  | wwASet : (wwASetA : Avatar) -> (wwASetK : Text) -> (wwASetU : Value) -> (wwASetV : Value) -> (wwASetXk : X) -> (i : I) -> X [ ~i -> avatarSet X wwASetA wwASetK wwASetU (avatarSet X wwASetA wwASetK wwASetV wwASetXk), i -> avatarSet X wwASetA wwASetK wwASetV wwASetXk ]
+  | wwISet : (wwISetZ : VirtualItem) -> (wwISetK : Text) -> (wwISetU : Value) -> (wwISetV : Value) -> (wwISetXk : X) -> (i : I) -> X [ ~i -> itemSet X wwISetZ wwISetK wwISetU (itemSet X wwISetZ wwISetK wwISetV wwISetXk), i -> itemSet X wwISetZ wwISetK wwISetV wwISetXk ]
+  | wrASet : (wrASetA : Avatar) -> (wrASetK : Text) -> (wrASetV : Value) -> (wrASetF : Option Value -> X) -> (i : I) -> X [ ~i -> avatarSet X wrASetA wrASetK wrASetV (avatarGet X wrASetA wrASetK wrASetF), i -> avatarSet X wrASetA wrASetK wrASetV (wrASetF (some wrASetV)) ]
+  | wrISet : (wrISetZ : VirtualItem) -> (wrISetK : Text) -> (wrISetV : Value) -> (wrISetF : Option Value -> X) -> (i : I) -> X [ ~i -> itemSet X wrISetZ wrISetK wrISetV (itemGet X wrISetZ wrISetK wrISetF), i -> itemSet X wrISetZ wrISetK wrISetV (wrISetF (some wrISetV)) ]
+-- The world lemmas of the write laws (S6R K6). pathComp composes two paths.
+-- worldRead reads the instance at an index of the world.
+def pathComp : (A : Type 0) -> (x : A) -> (y : A) -> (z : A) -> Path A x y -> Path A y z -> Path A x z :=
+  fun (A : Type 0) (x : A) (y : A) (z : A) (p : Path A x y) (q : Path A y z) =>
+    fun (j : I) => hcomp A (~j \/ j) (fun (i : I) => [ ~j -> x, j -> q @ i ]) (p @ j)
+def worldRead : W -> Nat -> Nat -> Instance := fun (w : W) (n : Nat) (j : Nat) =>
+  option (fun (u : Unit) => refUnknown Instance n) (fun (a : Instance) (u : Unit) => a) (worldAtF w n j) unit
+-- worldSetTwice: a set after a set at one index, with a path for the second
+-- value. L2 (setRarity twice at one item): rarWorld, then rarLaw.
+def worldSetTwice : (n : Nat) -> (x : Instance) -> (y : Instance) -> (z : Instance) -> (q : Path Instance y z) -> (w : W) -> (j : Nat) -> Path W (worldSetF (worldSetF w n x j) n y j) (worldSetF w n z j) :=
+  fun (n : Nat) (x : Instance) (y : Instance) (z : Instance) (q : Path Instance y z) (w : W) => elim (fun (d : WorldC Unit) => (j : Nat) -> Path W (worldSetF (worldSetF d n x j) n y j) (worldSetF d n z j))
+    (fun (a : Instance) (t : WorldC Unit) (ih : (j : Nat) -> Path W (worldSetF (worldSetF t n x j) n y j) (worldSetF t n z j)) => fun (j : Nat) =>
+      elim (fun (e : BoolC Unit) => Path W (worldCons Unit (ifB Instance e y (ifB Instance e x a)) (worldSetF (worldSetF t n x (succ j)) n y (succ j))) (worldCons Unit (ifB Instance e z a) (worldSetF t n z (succ j))))
+        (fun (u : Unit) => fun (i : I) => worldCons Unit (q @ i) (ih (succ j) @ i))
+        (fun (u : Unit) => fun (i : I) => worldCons Unit a (ih (succ j) @ i))
+        (natEqB j n))
+    (fun (u : Unit) => fun (j : Nat) => refl) w
+def rarGet : Nat -> Option Instance -> Instance := fun (n : Nat) (o : Option Instance) => option (fun (u : Unit) => refUnknown Instance n) (fun (a : Instance) (u : Unit) => a) o unit
+def rarG : Nat -> Rarity -> Instance -> Instance := fun (n : Nat) (e : Rarity) (x : Instance) => fold
+    (fun (a : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => refUnknown Instance n)
+    (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => refUnknown Instance n)
+    (fun (a : Text) (c : Text) (s : List Listing) => refUnknown Instance n)
+    (fun (a : Text) (y : Text) (v : Credits) (r : Rarity) (s : Attributes) => itemI Empty a y v e s)
+    (fun (v : Empty) => absurd Instance v) x
+def rarX : Nat -> Rarity -> Option Instance -> Instance := fun (n : Nat) (e : Rarity) (o : Option Instance) => rarG n e (rarGet n o)
+def rarGG : (n : Nat) -> (a : Rarity) -> (b : Rarity) -> (y : Instance) -> Path Instance (rarG n b (rarG n a y)) (rarG n b y) :=
+  fun (n : Nat) (a : Rarity) (b : Rarity) (y : Instance) => elim (fun (d : InstanceC Empty) => Path Instance (rarG n b (rarG n a d)) (rarG n b d))
+    (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => refl)
+    (fun (o : Avatar) (c : Credits) (l : SecurityLevel) (h : List Entry) => refl)
+    (fun (m : Text) (c : Text) (s : List Listing) => refl)
+    (fun (m : Text) (k : Text) (c : Credits) (r : Rarity) (s : Attributes) => refl)
+    (fun (v : Empty) => absurd (Path Instance (rarG n b (rarG n a (pure v))) (rarG n b (pure v))) v) y
+def rarL : Nat -> Rarity -> Rarity -> W -> Nat -> W := fun (n : Nat) (a : Rarity) (b : Rarity) (w : W) (j : Nat) =>
+  worldSetF (worldSetF w n (rarX n a (worldAtF w n j)) j) n (rarX n b (worldAtF (worldSetF w n (rarX n a (worldAtF w n j)) j) n j)) j
+def rarR : Nat -> Rarity -> W -> Nat -> W := fun (n : Nat) (b : Rarity) (w : W) (j : Nat) => worldSetF w n (rarX n b (worldAtF w n j)) j
+def rarM : Nat -> Rarity -> Rarity -> Instance -> W -> Nat -> BoolB -> Type 0 :=
+  fun (n : Nat) (a : Rarity) (b : Rarity) (y : Instance) (t : W) (j : Nat) (e : BoolB) => Path W
+    (worldCons Unit (ifB Instance e (rarX n b (ifB (Option Instance) e (some (ifB Instance e (rarX n a (ifB (Option Instance) e (some y) (worldAtF t n (succ j)))) y)) (worldAtF (worldSetF t n (rarX n a (ifB (Option Instance) e (some y) (worldAtF t n (succ j)))) (succ j)) n (succ j)))) (ifB Instance e (rarX n a (ifB (Option Instance) e (some y) (worldAtF t n (succ j)))) y))
+      (worldSetF (worldSetF t n (rarX n a (ifB (Option Instance) e (some y) (worldAtF t n (succ j)))) (succ j)) n (rarX n b (ifB (Option Instance) e (some (ifB Instance e (rarX n a (ifB (Option Instance) e (some y) (worldAtF t n (succ j)))) y)) (worldAtF (worldSetF t n (rarX n a (ifB (Option Instance) e (some y) (worldAtF t n (succ j)))) (succ j)) n (succ j)))) (succ j)))
+    (worldCons Unit (ifB Instance e (rarX n b (ifB (Option Instance) e (some y) (worldAtF t n (succ j)))) y) (worldSetF t n (rarX n b (ifB (Option Instance) e (some y) (worldAtF t n (succ j)))) (succ j)))
+def rarWorld : (n : Nat) -> (a : Rarity) -> (b : Rarity) -> (w : W) -> (j : Nat) -> Path W (rarL n a b w j) (rarR n b w j) :=
+  fun (n : Nat) (a : Rarity) (b : Rarity) (w : W) => elim (fun (d : WorldC Unit) => (j : Nat) -> Path W (rarL n a b d j) (rarR n b d j))
+    (fun (y : Instance) (t : WorldC Unit) (ih : (j : Nat) -> Path W (rarL n a b t j) (rarR n b t j)) => fun (j : Nat) =>
+      elim (fun (e : BoolC Unit) => rarM n a b y t j e)
+        (fun (u : Unit) => fun (i : I) => worldCons Unit (rarGG n a b y @ i) (worldSetTwice n (rarG n a y) (rarG n b (rarG n a y)) (rarG n b y) (rarGG n a b y) t (succ j) @ i))
+        (fun (u : Unit) => fun (i : I) => worldCons Unit y (ih (succ j) @ i))
+        (natEqB j n))
+    (fun (u : Unit) => fun (j : Nat) => refl) w
+def rarLaw : (z : VirtualItem) -> (a : Rarity) -> (b : Rarity) -> (w : W) -> Path W (itemPut (itemPut w z (fun (m : Text) (y : Text) (v : Credits) (r : Rarity) (s : Attributes) => itemI Empty m y v a s)) z (fun (m : Text) (y : Text) (v : Credits) (r : Rarity) (s : Attributes) => itemI Empty m y v b s)) (itemPut w z (fun (m : Text) (y : Text) (v : Credits) (r : Rarity) (s : Attributes) => itemI Empty m y v b s)) :=
+  fun (z : VirtualItem) (a : Rarity) (b : Rarity) (w : W) => rarWorld (itemId z) a b w 0
+-- L1 (setSecurity twice at one card): secWorld, then secLaw.
+def secRep : Instance -> Instance -> Instance := fun (x : Instance) (y : Instance) => fold
+    (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => x)
+    (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => x)
+    (fun (m : Text) (c : Text) (s : List Listing) => x)
+    (fun (m : Text) (c : Text) (b : Credits) (r : Rarity) (s : Attributes) => x)
+    (fun (v : Empty) => absurd Instance v) y
+def secCF : (R : Type 0) -> Nat -> Instance -> (Avatar -> Credits -> SecurityLevel -> List Entry -> R) -> R :=
+  fun (R : Type 0) (n : Nat) (y : Instance) (f : Avatar -> Credits -> SecurityLevel -> List Entry -> R) => fold
+    (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => refUnknown R n) f
+    (fun (m : Text) (c : Text) (s : List Listing) => refUnknown R n)
+    (fun (m : Text) (c : Text) (b : Credits) (r : Rarity) (s : Attributes) => refUnknown R n)
+    (fun (v : Empty) => absurd R v) y
+def secSet : Nat -> SecurityLevel -> W -> W := fun (n : Nat) (e : SecurityLevel) (w : W) =>
+  secCF W n (worldRead w n 0) (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => worldSet w n (cardI Empty o b e h))
+def secCC : (n : Nat) -> (e : SecurityLevel) -> (y : Instance) -> (g : Avatar -> Credits -> SecurityLevel -> List Entry -> W) ->
+    Path W (secSet n e (secCF W n y g)) (secCF W n y (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => secSet n e (g o b l h))) :=
+  fun (n : Nat) (e : SecurityLevel) (y : Instance) (g : Avatar -> Credits -> SecurityLevel -> List Entry -> W) =>
+    elim (fun (d : InstanceC Empty) => Path W (secSet n e (secCF W n d g)) (secCF W n d (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => secSet n e (g o b l h))))
+      (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => refl)
+      (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => refl)
+      (fun (m : Text) (c : Text) (s : List Listing) => refl)
+      (fun (m : Text) (c : Text) (b : Credits) (r : Rarity) (s : Attributes) => refl)
+      (fun (v : Empty) => absurd (Path W (secSet n e (secCF W n (pure v) g)) (secCF W n (pure v) (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => secSet n e (g o b l h)))) v) y
+def secWrRd : (n : Nat) -> (x : Instance) -> (w : W) -> (j : Nat) -> Path Instance (worldRead (worldSetF w n x j) n j) (secRep x (worldRead w n j)) :=
+  fun (n : Nat) (x : Instance) (w : W) => elim (fun (d : WorldC Unit) => (j : Nat) -> Path Instance (worldRead (worldSetF d n x j) n j) (secRep x (worldRead d n j)))
+    (fun (a : Instance) (t : WorldC Unit) (ih : (j : Nat) -> Path Instance (worldRead (worldSetF t n x j) n j) (secRep x (worldRead t n j))) => fun (j : Nat) =>
+      elim (fun (e : BoolC Unit) => Path Instance
+          (option (fun (u : Unit) => refUnknown Instance n) (fun (c : Instance) (u : Unit) => c) (ifB (Option Instance) e (some (ifB Instance e x a)) (worldAtF (worldSetF t n x (succ j)) n (succ j))) unit)
+          (secRep x (option (fun (u : Unit) => refUnknown Instance n) (fun (c : Instance) (u : Unit) => c) (ifB (Option Instance) e (some a) (worldAtF t n (succ j))) unit)))
+        (fun (u : Unit) => elim (fun (d : InstanceC Empty) => Path Instance x (secRep x d))
+          (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => refl)
+          (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => refl)
+          (fun (m : Text) (c : Text) (s : List Listing) => refl)
+          (fun (m : Text) (c : Text) (b : Credits) (r : Rarity) (s : Attributes) => refl)
+          (fun (v : Empty) => absurd (Path Instance x (secRep x (pure v))) v) a)
+        (fun (u : Unit) => ih (succ j))
+        (natEqB j n))
+    (fun (u : Unit) => fun (j : Nat) => refl) w
+def secM1 : Nat -> SecurityLevel -> SecurityLevel -> W -> W := fun (n : Nat) (e1 : SecurityLevel) (e2 : SecurityLevel) (w : W) =>
+  secCF W n (worldRead w n 0) (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => secSet n e2 (worldSet w n (cardI Empty o b e1 h)))
+def secM2 : Nat -> SecurityLevel -> SecurityLevel -> W -> Instance -> W := fun (n : Nat) (e1 : SecurityLevel) (e2 : SecurityLevel) (w : W) (y : Instance) =>
+  secCF W n y (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => secCF W n (secRep (cardI Empty o b e1 h) y)
+    (fun (o2 : Avatar) (b2 : Credits) (l2 : SecurityLevel) (h2 : List Entry) => worldSet (worldSet w n (cardI Empty o b e1 h)) n (cardI Empty o2 b2 e2 h2)))
+def secR1 : Nat -> SecurityLevel -> W -> Instance -> W := fun (n : Nat) (e2 : SecurityLevel) (w : W) (y : Instance) =>
+  secCF W n y (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => worldSet w n (cardI Empty o b e2 h))
+def secG : (n : Nat) -> (e1 : SecurityLevel) -> (e2 : SecurityLevel) -> (w : W) -> (y : Instance) -> Path W (secM2 n e1 e2 w y) (secR1 n e2 w y) :=
+  fun (n : Nat) (e1 : SecurityLevel) (e2 : SecurityLevel) (w : W) (y : Instance) => elim (fun (d : InstanceC Empty) => Path W (secM2 n e1 e2 w d) (secR1 n e2 w d))
+    (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => refl)
+    (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => worldSetTwice n (cardI Empty o b e1 h) (cardI Empty o b e2 h) (cardI Empty o b e2 h) (fun (k : I) => cardI Empty o b e2 h) w 0)
+    (fun (m : Text) (c : Text) (s : List Listing) => refl)
+    (fun (m : Text) (c : Text) (b : Credits) (r : Rarity) (s : Attributes) => refl)
+    (fun (v : Empty) => absurd (Path W (secM2 n e1 e2 w (pure v)) (secR1 n e2 w (pure v))) v) y
+def secW12 : (n : Nat) -> (e1 : SecurityLevel) -> (e2 : SecurityLevel) -> (w : W) -> Path W (secM1 n e1 e2 w) (secM2 n e1 e2 w (worldRead w n 0)) :=
+  fun (n : Nat) (e1 : SecurityLevel) (e2 : SecurityLevel) (w : W) => fun (i : I) =>
+    secCF W n (worldRead w n 0) (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => secCF W n (secWrRd n (cardI Empty o b e1 h) w 0 @ i)
+      (fun (o2 : Avatar) (b2 : Credits) (l2 : SecurityLevel) (h2 : List Entry) => worldSet (worldSet w n (cardI Empty o b e1 h)) n (cardI Empty o2 b2 e2 h2)))
+def secWorld : (n : Nat) -> (e1 : SecurityLevel) -> (e2 : SecurityLevel) -> (w : W) -> Path W (secSet n e2 (secSet n e1 w)) (secSet n e2 w) :=
+  fun (n : Nat) (e1 : SecurityLevel) (e2 : SecurityLevel) (w : W) =>
+    pathComp W (secSet n e2 (secSet n e1 w)) (secM1 n e1 e2 w) (secSet n e2 w)
+      (secCC n e2 (worldRead w n 0) (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => worldSet w n (cardI Empty o b e1 h)))
+      (pathComp W (secM1 n e1 e2 w) (secM2 n e1 e2 w (worldRead w n 0)) (secSet n e2 w) (secW12 n e1 e2 w) (secG n e1 e2 w (worldRead w n 0)))
+def secLaw : (c : VirtuCard) -> (e1 : SecurityLevel) -> (e2 : SecurityLevel) -> (w : W) ->
+    Path W (withCard W (withCard W w c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => worldSet w (cardId c) (cardI Empty o b e1 h))) c
+        (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => worldSet (withCard W w c (fun (o3 : Avatar) (b3 : Credits) (l3 : SecurityLevel) (h3 : List Entry) => worldSet w (cardId c) (cardI Empty o3 b3 e1 h3))) (cardId c) (cardI Empty o b e2 h)))
+      (withCard W w c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => worldSet w (cardId c) (cardI Empty o b e2 h))) :=
+  fun (c : VirtuCard) (e1 : SecurityLevel) (e2 : SecurityLevel) (w : W) => secWorld (cardId c) e1 e2 w
+-- L3 and L4 at an avatar, the world part: the change of the attributes is a
+-- parameter.
+def readHead : BoolB -> Instance -> W -> Nat -> Nat -> Instance := fun (e : BoolB) (a : Instance) (t : W) (n : Nat) (j : Nat) =>
+  option (fun (u : Unit) => refUnknown Instance n) (fun (c : Instance) (u : Unit) => c) (ifB (Option Instance) e (some a) (worldAtF t n (succ j))) unit
+def setHead : BoolB -> Instance -> W -> Nat -> Instance -> Nat -> W := fun (e : BoolB) (a : Instance) (t : W) (n : Nat) (x : Instance) (j : Nat) =>
+  worldCons Unit (ifB Instance e x a) (worldSetF t n x (succ j))
+def avatarFold : (R : Type 0) -> Nat -> Instance -> (Text -> Role -> Option VirtuCard -> Attributes -> List VirtualItem -> R) -> R :=
+  fun (R : Type 0) (n : Nat) (y : Instance) (f : Text -> Role -> Option VirtuCard -> Attributes -> List VirtualItem -> R) => fold f
+    (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => refUnknown R n)
+    (fun (m : Text) (c : Text) (s : List Listing) => refUnknown R n)
+    (fun (m : Text) (c : Text) (b : Credits) (r : Rarity) (s : Attributes) => refUnknown R n)
+    (fun (v : Empty) => absurd R v) y
+def avatarSetR : (R : Type 0) -> Nat -> (Attributes -> Attributes) -> (W -> R) -> W -> Nat -> R :=
+  fun (R : Type 0) (n : Nat) (g : Attributes -> Attributes) (cx : W -> R) (w : W) (j : Nat) =>
+    avatarFold R n (worldRead w n j) (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => cx (worldSetF w n (avatarI Empty m r o (g s) v) j))
+def asetM : (R : Type 0) -> Nat -> (Attributes -> Attributes) -> (Attributes -> Attributes) -> Instance -> W -> Nat -> (W -> R) -> BoolB -> Type 0 :=
+  fun (R : Type 0) (n : Nat) (g1 : Attributes -> Attributes) (g2 : Attributes -> Attributes) (a : Instance) (t : W) (j : Nat) (cx : W -> R) (e : BoolB) => Path R
+    (avatarFold R n (readHead e a t n j) (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) =>
+      avatarFold R n (readHead e (ifB Instance e (avatarI Empty m r o (g1 s) v) a) (worldSetF t n (avatarI Empty m r o (g1 s) v) (succ j)) n j)
+        (fun (m2 : Text) (r2 : Role) (o2 : Option VirtuCard) (s2 : Attributes) (v2 : List VirtualItem) =>
+          cx (setHead e (ifB Instance e (avatarI Empty m r o (g1 s) v) a) (worldSetF t n (avatarI Empty m r o (g1 s) v) (succ j)) n (avatarI Empty m2 r2 o2 (g2 s2) v2) j))))
+    (avatarFold R n (readHead e a t n j) (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) =>
+      cx (setHead e a t n (avatarI Empty m r o (g2 (g1 s)) v) j)))
+def asetWorld : (R : Type 0) -> (n : Nat) -> (g1 : Attributes -> Attributes) -> (g2 : Attributes -> Attributes) -> (w : W) -> (j : Nat) -> (cx : W -> R) ->
+    Path R (avatarSetR R n g1 (fun (u : W) => avatarSetR R n g2 cx u j) w j) (avatarSetR R n (fun (s : Attributes) => g2 (g1 s)) cx w j) :=
+  fun (R : Type 0) (n : Nat) (g1 : Attributes -> Attributes) (g2 : Attributes -> Attributes) (w : W) =>
+    elim (fun (d : WorldC Unit) => (j : Nat) -> (cx : W -> R) -> Path R (avatarSetR R n g1 (fun (u : W) => avatarSetR R n g2 cx u j) d j) (avatarSetR R n (fun (s : Attributes) => g2 (g1 s)) cx d j))
+      (fun (a : Instance) (t : WorldC Unit) (ih : (j : Nat) -> (cx : W -> R) -> Path R (avatarSetR R n g1 (fun (u : W) => avatarSetR R n g2 cx u j) t j) (avatarSetR R n (fun (s : Attributes) => g2 (g1 s)) cx t j)) =>
+        fun (j : Nat) (cx : W -> R) => elim (fun (e : BoolC Unit) => asetM R n g1 g2 a t j cx e)
+          (fun (u : Unit) => fun (i : I) => avatarFold R n a (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) =>
+            cx (worldCons Unit (avatarI Empty m r o (g2 (g1 s)) v) (worldSetTwice n (avatarI Empty m r o (g1 s) v) (avatarI Empty m r o (g2 (g1 s)) v) (avatarI Empty m r o (g2 (g1 s)) v) (fun (k : I) => avatarI Empty m r o (g2 (g1 s)) v) t (succ j) @ i))))
+          (fun (u : Unit) => ih (succ j) (fun (z : W) => cx (worldCons Unit a z)))
+          (natEqB j n))
+      (fun (u : Unit) => fun (j : Nat) (cx : W -> R) => refl) w
+def asetUse : (X : Type 0) -> (a : Avatar) -> (y : Text) -> (z1 : Value) -> (z2 : Value) -> (kx : W -> Prod W X) -> (w : W) ->
+    Path (Prod W X) (withAvatar (Prod W X) w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) =>
+        (fun (w2 : W) => withAvatar (Prod W X) w2 a (fun (n2 : Text) (r2 : Role) (o2 : Option VirtuCard) (s2 : Attributes) (v2 : List VirtualItem) => kx (worldSet w2 (avatarId a) (avatarI Empty n2 r2 o2 (attrSet s2 y z2) v2))))
+          (worldSet w (avatarId a) (avatarI Empty n r o (attrSet s y z1) v))))
+      (avatarSetR (Prod W X) (avatarId a) (fun (s : Attributes) => attrSet (attrSet s y z1) y z2) kx w 0) :=
+  fun (X : Type 0) (a : Avatar) (y : Text) (z1 : Value) (z2 : Value) (kx : W -> Prod W X) (w : W) =>
+    asetWorld (Prod W X) (avatarId a) (fun (s : Attributes) => attrSet s y z1) (fun (s : Attributes) => attrSet s y z2) w 0 kx
+def agetM : (R : Type 0) -> Nat -> (Attributes -> Attributes) -> (Attributes -> Option Value) -> Instance -> W -> Nat -> (Option Value -> W -> R) -> BoolB -> Type 0 :=
+  fun (R : Type 0) (n : Nat) (g : Attributes -> Attributes) (hr : Attributes -> Option Value) (a : Instance) (t : W) (j : Nat) (cx : Option Value -> W -> R) (e : BoolB) => Path R
+    (avatarFold R n (readHead e a t n j) (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) =>
+      cx (avatarFold (Option Value) n (readHead e (ifB Instance e (avatarI Empty m r o (g s) v) a) (worldSetF t n (avatarI Empty m r o (g s) v) (succ j)) n j)
+            (fun (m2 : Text) (r2 : Role) (o2 : Option VirtuCard) (s2 : Attributes) (v2 : List VirtualItem) => hr s2))
+        (setHead e a t n (avatarI Empty m r o (g s) v) j)))
+    (avatarFold R n (readHead e a t n j) (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) =>
+      cx (hr (g s)) (setHead e a t n (avatarI Empty m r o (g s) v) j)))
+def agetR : (R : Type 0) -> Nat -> (Attributes -> Attributes) -> (Attributes -> Option Value) -> (Option Value -> W -> R) -> W -> Nat -> R :=
+  fun (R : Type 0) (n : Nat) (g : Attributes -> Attributes) (hr : Attributes -> Option Value) (cx : Option Value -> W -> R) (w : W) (j : Nat) =>
+    avatarFold R n (worldRead w n j) (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => cx (hr (g s)) (worldSetF w n (avatarI Empty m r o (g s) v) j))
+def agetWorld : (R : Type 0) -> (n : Nat) -> (g : Attributes -> Attributes) -> (hr : Attributes -> Option Value) -> (w : W) -> (j : Nat) -> (cx : Option Value -> W -> R) ->
+    Path R (avatarSetR R n g (fun (u : W) => cx (avatarFold (Option Value) n (worldRead u n j) (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => hr s)) u) w j) (agetR R n g hr cx w j) :=
+  fun (R : Type 0) (n : Nat) (g : Attributes -> Attributes) (hr : Attributes -> Option Value) (w : W) =>
+    elim (fun (d : WorldC Unit) => (j : Nat) -> (cx : Option Value -> W -> R) -> Path R (avatarSetR R n g (fun (u : W) => cx (avatarFold (Option Value) n (worldRead u n j) (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => hr s)) u) d j) (agetR R n g hr cx d j))
+      (fun (a : Instance) (t : WorldC Unit) (ih : (j : Nat) -> (cx : Option Value -> W -> R) -> Path R (avatarSetR R n g (fun (u : W) => cx (avatarFold (Option Value) n (worldRead u n j) (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => hr s)) u) t j) (agetR R n g hr cx t j)) =>
+        fun (j : Nat) (cx : Option Value -> W -> R) => elim (fun (e : BoolC Unit) => agetM R n g hr a t j cx e)
+          (fun (u : Unit) => refl)
+          (fun (u : Unit) => ih (succ j) (fun (ov : Option Value) (z : W) => cx ov (worldCons Unit a z)))
+          (natEqB j n))
+      (fun (u : Unit) => fun (j : Nat) (cx : Option Value -> W -> R) => refl) w
+def agetUse : (X : Type 0) -> (a : Avatar) -> (y : Text) -> (z : Value) -> (kf : Option Value -> W -> Prod W X) -> (w : W) ->
+    Path (Prod W X) (withAvatar (Prod W X) w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) =>
+        (fun (w2 : W) => kf (withAvatar (Option Value) w2 a (fun (n2 : Text) (r2 : Role) (o2 : Option VirtuCard) (s2 : Attributes) (v2 : List VirtualItem) => attrGet s2 y)) w2)
+          (worldSet w (avatarId a) (avatarI Empty n r o (attrSet s y z) v))))
+      (agetR (Prod W X) (avatarId a) (fun (s : Attributes) => attrSet s y z) (fun (s : Attributes) => attrGet s y) kf w 0) :=
+  fun (X : Type 0) (a : Avatar) (y : Text) (z : Value) (kf : Option Value -> W -> Prod W X) (w : W) =>
+    agetWorld (Prod W X) (avatarId a) (fun (s : Attributes) => attrSet s y z) (fun (s : Attributes) => attrGet s y) w 0 kf
+-- L3 and L4 at an item, the world part.
+def itemFold : (R : Type 0) -> Nat -> Instance -> (Text -> Text -> Credits -> Rarity -> Attributes -> R) -> R :=
+  fun (R : Type 0) (n : Nat) (y : Instance) (f : Text -> Text -> Credits -> Rarity -> Attributes -> R) => fold
+    (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => refUnknown R n)
+    (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => refUnknown R n)
+    (fun (m : Text) (c : Text) (s : List Listing) => refUnknown R n) f
+    (fun (v : Empty) => absurd R v) y
+def itemSetR : (R : Type 0) -> Nat -> (Attributes -> Attributes) -> (W -> R) -> W -> Nat -> R :=
+  fun (R : Type 0) (n : Nat) (g : Attributes -> Attributes) (cx : W -> R) (w : W) (j : Nat) =>
+    itemFold R n (worldRead w n j) (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) => cx (worldSetF w n (itemI Empty m b c r (g s)) j))
+def isetM : (R : Type 0) -> Nat -> (Attributes -> Attributes) -> (Attributes -> Attributes) -> Instance -> W -> Nat -> (W -> R) -> BoolB -> Type 0 :=
+  fun (R : Type 0) (n : Nat) (g1 : Attributes -> Attributes) (g2 : Attributes -> Attributes) (a : Instance) (t : W) (j : Nat) (cx : W -> R) (e : BoolB) => Path R
+    (itemFold R n (readHead e a t n j) (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) =>
+      itemFold R n (readHead e (ifB Instance e (itemI Empty m b c r (g1 s)) a) (worldSetF t n (itemI Empty m b c r (g1 s)) (succ j)) n j)
+        (fun (m2 : Text) (b2 : Text) (c2 : Credits) (r2 : Rarity) (s2 : Attributes) =>
+          cx (setHead e (ifB Instance e (itemI Empty m b c r (g1 s)) a) (worldSetF t n (itemI Empty m b c r (g1 s)) (succ j)) n (itemI Empty m2 b2 c2 r2 (g2 s2)) j))))
+    (itemFold R n (readHead e a t n j) (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) =>
+      cx (setHead e a t n (itemI Empty m b c r (g2 (g1 s))) j)))
+def isetWorld : (R : Type 0) -> (n : Nat) -> (g1 : Attributes -> Attributes) -> (g2 : Attributes -> Attributes) -> (w : W) -> (j : Nat) -> (cx : W -> R) ->
+    Path R (itemSetR R n g1 (fun (u : W) => itemSetR R n g2 cx u j) w j) (itemSetR R n (fun (s : Attributes) => g2 (g1 s)) cx w j) :=
+  fun (R : Type 0) (n : Nat) (g1 : Attributes -> Attributes) (g2 : Attributes -> Attributes) (w : W) =>
+    elim (fun (d : WorldC Unit) => (j : Nat) -> (cx : W -> R) -> Path R (itemSetR R n g1 (fun (u : W) => itemSetR R n g2 cx u j) d j) (itemSetR R n (fun (s : Attributes) => g2 (g1 s)) cx d j))
+      (fun (a : Instance) (t : WorldC Unit) (ih : (j : Nat) -> (cx : W -> R) -> Path R (itemSetR R n g1 (fun (u : W) => itemSetR R n g2 cx u j) t j) (itemSetR R n (fun (s : Attributes) => g2 (g1 s)) cx t j)) =>
+        fun (j : Nat) (cx : W -> R) => elim (fun (e : BoolC Unit) => isetM R n g1 g2 a t j cx e)
+          (fun (u : Unit) => fun (i : I) => itemFold R n a (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) =>
+            cx (worldCons Unit (itemI Empty m b c r (g2 (g1 s))) (worldSetTwice n (itemI Empty m b c r (g1 s)) (itemI Empty m b c r (g2 (g1 s))) (itemI Empty m b c r (g2 (g1 s))) (fun (k : I) => itemI Empty m b c r (g2 (g1 s))) t (succ j) @ i))))
+          (fun (u : Unit) => ih (succ j) (fun (z : W) => cx (worldCons Unit a z)))
+          (natEqB j n))
+      (fun (u : Unit) => fun (j : Nat) (cx : W -> R) => refl) w
+def isetUse : (X : Type 0) -> (a : VirtualItem) -> (y : Text) -> (z1 : Value) -> (z2 : Value) -> (kx : W -> Prod W X) -> (w : W) ->
+    Path (Prod W X) (withItem (Prod W X) w a (fun (n : Text) (b : Text) (v : Credits) (r : Rarity) (s : Attributes) =>
+        (fun (w2 : W) => withItem (Prod W X) w2 a (fun (n2 : Text) (b2 : Text) (v2 : Credits) (r2 : Rarity) (s2 : Attributes) => kx (worldSet w2 (itemId a) (itemI Empty n2 b2 v2 r2 (attrSet s2 y z2)))))
+          (worldSet w (itemId a) (itemI Empty n b v r (attrSet s y z1)))))
+      (itemSetR (Prod W X) (itemId a) (fun (s : Attributes) => attrSet (attrSet s y z1) y z2) kx w 0) :=
+  fun (X : Type 0) (a : VirtualItem) (y : Text) (z1 : Value) (z2 : Value) (kx : W -> Prod W X) (w : W) =>
+    isetWorld (Prod W X) (itemId a) (fun (s : Attributes) => attrSet s y z1) (fun (s : Attributes) => attrSet s y z2) w 0 kx
+def igetM : (R : Type 0) -> Nat -> (Attributes -> Attributes) -> (Attributes -> Option Value) -> Instance -> W -> Nat -> (Option Value -> W -> R) -> BoolB -> Type 0 :=
+  fun (R : Type 0) (n : Nat) (g : Attributes -> Attributes) (hr : Attributes -> Option Value) (a : Instance) (t : W) (j : Nat) (cx : Option Value -> W -> R) (e : BoolB) => Path R
+    (itemFold R n (readHead e a t n j) (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) =>
+      cx (itemFold (Option Value) n (readHead e (ifB Instance e (itemI Empty m b c r (g s)) a) (worldSetF t n (itemI Empty m b c r (g s)) (succ j)) n j)
+            (fun (m2 : Text) (b2 : Text) (c2 : Credits) (r2 : Rarity) (s2 : Attributes) => hr s2))
+        (setHead e a t n (itemI Empty m b c r (g s)) j)))
+    (itemFold R n (readHead e a t n j) (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) =>
+      cx (hr (g s)) (setHead e a t n (itemI Empty m b c r (g s)) j)))
+def igetR : (R : Type 0) -> Nat -> (Attributes -> Attributes) -> (Attributes -> Option Value) -> (Option Value -> W -> R) -> W -> Nat -> R :=
+  fun (R : Type 0) (n : Nat) (g : Attributes -> Attributes) (hr : Attributes -> Option Value) (cx : Option Value -> W -> R) (w : W) (j : Nat) =>
+    itemFold R n (worldRead w n j) (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) => cx (hr (g s)) (worldSetF w n (itemI Empty m b c r (g s)) j))
+def igetWorld : (R : Type 0) -> (n : Nat) -> (g : Attributes -> Attributes) -> (hr : Attributes -> Option Value) -> (w : W) -> (j : Nat) -> (cx : Option Value -> W -> R) ->
+    Path R (itemSetR R n g (fun (u : W) => cx (itemFold (Option Value) n (worldRead u n j) (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) => hr s)) u) w j) (igetR R n g hr cx w j) :=
+  fun (R : Type 0) (n : Nat) (g : Attributes -> Attributes) (hr : Attributes -> Option Value) (w : W) =>
+    elim (fun (d : WorldC Unit) => (j : Nat) -> (cx : Option Value -> W -> R) -> Path R (itemSetR R n g (fun (u : W) => cx (itemFold (Option Value) n (worldRead u n j) (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) => hr s)) u) d j) (igetR R n g hr cx d j))
+      (fun (a : Instance) (t : WorldC Unit) (ih : (j : Nat) -> (cx : Option Value -> W -> R) -> Path R (itemSetR R n g (fun (u : W) => cx (itemFold (Option Value) n (worldRead u n j) (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) => hr s)) u) t j) (igetR R n g hr cx t j)) =>
+        fun (j : Nat) (cx : Option Value -> W -> R) => elim (fun (e : BoolC Unit) => igetM R n g hr a t j cx e)
+          (fun (u : Unit) => refl)
+          (fun (u : Unit) => ih (succ j) (fun (ov : Option Value) (z : W) => cx ov (worldCons Unit a z)))
+          (natEqB j n))
+      (fun (u : Unit) => fun (j : Nat) (cx : Option Value -> W -> R) => refl) w
+def igetUse : (X : Type 0) -> (a : VirtualItem) -> (y : Text) -> (z : Value) -> (kf : Option Value -> W -> Prod W X) -> (w : W) ->
+    Path (Prod W X) (withItem (Prod W X) w a (fun (n : Text) (b : Text) (v : Credits) (r : Rarity) (s : Attributes) =>
+        (fun (w2 : W) => kf (withItem (Option Value) w2 a (fun (n2 : Text) (b2 : Text) (v2 : Credits) (r2 : Rarity) (s2 : Attributes) => attrGet s2 y)) w2)
+          (worldSet w (itemId a) (itemI Empty n b v r (attrSet s y z)))))
+      (igetR (Prod W X) (itemId a) (fun (s : Attributes) => attrSet s y z) (fun (s : Attributes) => attrGet s y) kf w 0) :=
+  fun (X : Type 0) (a : VirtualItem) (y : Text) (z : Value) (kf : Option Value -> W -> Prod W X) (w : W) =>
+    igetWorld (Prod W X) (itemId a) (fun (s : Attributes) => attrSet s y z) (fun (s : Attributes) => attrGet s y) w 0 kf
+-- The attribute laws of attrSetF: a get after a set (attrSetGet) and a set
+-- after a set (attrSetSet).
+def attrSetGet : (k : Text) -> (v : Value) -> (l : Attributes) -> Path (Option Value) (attrGet (attrSetF l k v falseB) k) (some v) :=
+  fun (k : Text) (v : Value) (l : Attributes) => elim (fun (d : AttrC Unit) => Path (Option Value) (attrGet (attrSetF d k v falseB) k) (some v))
+    (fun (p : Prod Text Value) (t : AttrC Unit) (ih : Path (Option Value) (attrGet (attrSetF t k v falseB) k) (some v)) =>
+      elim (fun (e : BoolC Unit) => Path (Option Value)
+          (ifB (Option Value) e (some (ifB Value e v (second p))) (attrGet (attrSetF t k v (ifB BoolB e trueB falseB)) k))
+          (some v))
+        (fun (u : Unit) => refl)
+        (fun (u : Unit) => ih)
+        (textEqB (first p) k))
+    (fun (u : Unit) => refl) l
+def attrSetSet : (k : Text) -> (v1 : Value) -> (v2 : Value) -> (l : Attributes) -> (f : BoolB) -> Path Attributes (attrSetF (attrSetF l k v1 f) k v2 f) (attrSetF l k v2 f) :=
+  fun (k : Text) (v1 : Value) (v2 : Value) (l : Attributes) => elim (fun (d : AttrC Unit) => (f : BoolB) -> Path Attributes (attrSetF (attrSetF d k v1 f) k v2 f) (attrSetF d k v2 f))
+    (fun (p : Prod Text Value) (t : AttrC Unit) (ih : (f : BoolB) -> Path Attributes (attrSetF (attrSetF t k v1 f) k v2 f) (attrSetF t k v2 f)) => fun (f : BoolB) =>
+      elim (fun (e : BoolC Unit) => Path Attributes
+          (attrCons Unit (pair (first p) (ifB Value e v2 (ifB Value e v1 (second p)))) (attrSetF (attrSetF t k v1 (ifB BoolB e trueB f)) k v2 (ifB BoolB e trueB f)))
+          (attrCons Unit (pair (first p) (ifB Value e v2 (second p))) (attrSetF t k v2 (ifB BoolB e trueB f))))
+        (fun (u : Unit) => fun (i : I) => attrCons Unit (pair (first p) v2) (ih trueB @ i))
+        (fun (u : Unit) => fun (i : I) => attrCons Unit (pair (first p) (second p)) (ih f @ i))
+        (textEqB (first p) k))
+    (fun (u : Unit) => fun (f : BoolB) => elim (fun (b : BoolC Unit) => Path Attributes (attrSetF (ifB Attributes b attrNil (attrCons Unit (pair k v1) attrNil)) k v2 b) (ifB Attributes b attrNil (attrCons Unit (pair k v2) attrNil)))
+        (fun (u2 : Unit) => refl) (fun (u2 : Unit) => refl) f) l
+-- L3 and L4 at an avatar: the world part, then the attribute law.
+def asetL : (X : Type 0) -> Avatar -> Text -> Value -> Value -> (W -> Prod W X) -> W -> Prod W X :=
+  fun (X : Type 0) (a : Avatar) (y : Text) (z1 : Value) (z2 : Value) (kx : W -> Prod W X) (w : W) =>
+    withAvatar (Prod W X) w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) =>
+      (fun (w2 : W) => withAvatar (Prod W X) w2 a (fun (n2 : Text) (r2 : Role) (o2 : Option VirtuCard) (s2 : Attributes) (v2 : List VirtualItem) => kx (worldSet w2 (avatarId a) (avatarI Empty n2 r2 o2 (attrSet s2 y z2) v2))))
+        (worldSet w (avatarId a) (avatarI Empty n r o (attrSet s y z1) v)))
+def asetLaw : (X : Type 0) -> (a : Avatar) -> (y : Text) -> (z1 : Value) -> (z2 : Value) -> (kx : W -> Prod W X) -> (w : W) ->
+    Path (Prod W X) (asetL X a y z1 z2 kx w) (avatarSetR (Prod W X) (avatarId a) (fun (s : Attributes) => attrSet s y z2) kx w 0) :=
+  fun (X : Type 0) (a : Avatar) (y : Text) (z1 : Value) (z2 : Value) (kx : W -> Prod W X) (w : W) =>
+    pathComp (Prod W X) (asetL X a y z1 z2 kx w) (avatarSetR (Prod W X) (avatarId a) (fun (s : Attributes) => attrSet (attrSet s y z1) y z2) kx w 0)
+      (avatarSetR (Prod W X) (avatarId a) (fun (s : Attributes) => attrSet s y z2) kx w 0)
+      (asetUse X a y z1 z2 kx w)
+      (fun (i : I) => avatarSetR (Prod W X) (avatarId a) (fun (s : Attributes) => attrSetSet y z1 z2 s falseB @ i) kx w 0)
+def agetL : (X : Type 0) -> Avatar -> Text -> Value -> (Option Value -> W -> Prod W X) -> W -> Prod W X :=
+  fun (X : Type 0) (a : Avatar) (y : Text) (z : Value) (kf : Option Value -> W -> Prod W X) (w : W) =>
+    withAvatar (Prod W X) w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) =>
+      (fun (w2 : W) => kf (withAvatar (Option Value) w2 a (fun (n2 : Text) (r2 : Role) (o2 : Option VirtuCard) (s2 : Attributes) (v2 : List VirtualItem) => attrGet s2 y)) w2)
+        (worldSet w (avatarId a) (avatarI Empty n r o (attrSet s y z) v)))
+def agetLaw : (X : Type 0) -> (a : Avatar) -> (y : Text) -> (z : Value) -> (kf : Option Value -> W -> Prod W X) -> (w : W) ->
+    Path (Prod W X) (agetL X a y z kf w) (avatarSetR (Prod W X) (avatarId a) (fun (s : Attributes) => attrSet s y z) (kf (some z)) w 0) :=
+  fun (X : Type 0) (a : Avatar) (y : Text) (z : Value) (kf : Option Value -> W -> Prod W X) (w : W) =>
+    pathComp (Prod W X) (agetL X a y z kf w) (agetR (Prod W X) (avatarId a) (fun (s : Attributes) => attrSet s y z) (fun (s : Attributes) => attrGet s y) kf w 0)
+      (avatarSetR (Prod W X) (avatarId a) (fun (s : Attributes) => attrSet s y z) (kf (some z)) w 0)
+      (agetUse X a y z kf w)
+      (fun (i : I) => avatarFold (Prod W X) (avatarId a) (worldRead w (avatarId a) 0) (fun (m : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) =>
+        kf (attrSetGet y z s @ i) (worldSetF w (avatarId a) (avatarI Empty m r o (attrSet s y z) v) 0)))
+-- L3 and L4 at an item: the world part, then the attribute law.
+def isetL : (X : Type 0) -> VirtualItem -> Text -> Value -> Value -> (W -> Prod W X) -> W -> Prod W X :=
+  fun (X : Type 0) (a : VirtualItem) (y : Text) (z1 : Value) (z2 : Value) (kx : W -> Prod W X) (w : W) =>
+    withItem (Prod W X) w a (fun (n : Text) (b : Text) (v : Credits) (r : Rarity) (s : Attributes) =>
+      (fun (w2 : W) => withItem (Prod W X) w2 a (fun (n2 : Text) (b2 : Text) (v2 : Credits) (r2 : Rarity) (s2 : Attributes) => kx (worldSet w2 (itemId a) (itemI Empty n2 b2 v2 r2 (attrSet s2 y z2)))))
+        (worldSet w (itemId a) (itemI Empty n b v r (attrSet s y z1))))
+def isetLaw : (X : Type 0) -> (a : VirtualItem) -> (y : Text) -> (z1 : Value) -> (z2 : Value) -> (kx : W -> Prod W X) -> (w : W) ->
+    Path (Prod W X) (isetL X a y z1 z2 kx w) (itemSetR (Prod W X) (itemId a) (fun (s : Attributes) => attrSet s y z2) kx w 0) :=
+  fun (X : Type 0) (a : VirtualItem) (y : Text) (z1 : Value) (z2 : Value) (kx : W -> Prod W X) (w : W) =>
+    pathComp (Prod W X) (isetL X a y z1 z2 kx w) (itemSetR (Prod W X) (itemId a) (fun (s : Attributes) => attrSet (attrSet s y z1) y z2) kx w 0)
+      (itemSetR (Prod W X) (itemId a) (fun (s : Attributes) => attrSet s y z2) kx w 0)
+      (isetUse X a y z1 z2 kx w)
+      (fun (i : I) => itemSetR (Prod W X) (itemId a) (fun (s : Attributes) => attrSetSet y z1 z2 s falseB @ i) kx w 0)
+def igetL : (X : Type 0) -> VirtualItem -> Text -> Value -> (Option Value -> W -> Prod W X) -> W -> Prod W X :=
+  fun (X : Type 0) (a : VirtualItem) (y : Text) (z : Value) (kf : Option Value -> W -> Prod W X) (w : W) =>
+    withItem (Prod W X) w a (fun (n : Text) (b : Text) (v : Credits) (r : Rarity) (s : Attributes) =>
+      (fun (w2 : W) => kf (withItem (Option Value) w2 a (fun (n2 : Text) (b2 : Text) (v2 : Credits) (r2 : Rarity) (s2 : Attributes) => attrGet s2 y)) w2)
+        (worldSet w (itemId a) (itemI Empty n b v r (attrSet s y z))))
+def igetLaw : (X : Type 0) -> (a : VirtualItem) -> (y : Text) -> (z : Value) -> (kf : Option Value -> W -> Prod W X) -> (w : W) ->
+    Path (Prod W X) (igetL X a y z kf w) (itemSetR (Prod W X) (itemId a) (fun (s : Attributes) => attrSet s y z) (kf (some z)) w 0) :=
+  fun (X : Type 0) (a : VirtualItem) (y : Text) (z : Value) (kf : Option Value -> W -> Prod W X) (w : W) =>
+    pathComp (Prod W X) (igetL X a y z kf w) (igetR (Prod W X) (itemId a) (fun (s : Attributes) => attrSet s y z) (fun (s : Attributes) => attrGet s y) kf w 0)
+      (itemSetR (Prod W X) (itemId a) (fun (s : Attributes) => attrSet s y z) (kf (some z)) w 0)
+      (igetUse X a y z kf w)
+      (fun (i : I) => itemFold (Prod W X) (itemId a) (worldRead w (itemId a) 0) (fun (m : Text) (b : Text) (c : Credits) (r : Rarity) (s : Attributes) =>
+        kf (attrSetGet y z s @ i) (worldSetF w (itemId a) (itemI Empty m b c r (attrSet s y z)) 0)))
 -- run (K5): the fold of a program into a function of the world. A new
--- instance goes at the end of W. The fold has 40 cases: the 28 0-cells in
--- PLAN 5.1 row order, the 11 L5 laws in read row order, then pure. The
--- case of each law is refl: a read does not change the world, thus the two
--- ends of the law run to convertible functions of the world (S6 K4).
+-- instance goes at the end of W. The fold has 46 cases: the 28 0-cells in
+-- PLAN 5.1 row order, the 11 L5 laws in read row order, the 6 write laws
+-- (L1 to L4) in 1-cell order, then pure. The case of each L5 law is refl:
+-- a read does not change the world, thus the two ends of the law run to
+-- convertible functions of the world (S6 K4). The case of each write law
+-- applies its world lemma above (S6R K6).
 def run : (X : Type 0) -> Virt X -> W -> Prod W X :=
   fun (X : Type 0) (t : Virt X) => fold
     (fun (n : Text) (r : Role) (k : Avatar -> W -> Prod W X) => fun (w : W) =>
-      k (avatarRef Empty (listSize Instance w)) (listSnoc Instance w (avatarI Empty n r none nil nil)))
+      k (avatarRef Empty (worldCount w)) (worldSnoc w (avatarI Empty n r none attrNil nil)))
     (fun (a : Avatar) (k : Text -> W -> Prod W X) => fun (w : W) =>
       k (withAvatar Text w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => n)) w)
     (fun (a : Avatar) (k : Role -> W -> Prod W X) => fun (w : W) =>
@@ -415,14 +774,14 @@ def run : (X : Type 0) -> Virt X -> W -> Prod W X :=
     (fun (a : Avatar) (c : VirtuCard) (k : W -> Prod W X) => fun (w : W) =>
       k (avatarPut w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => avatarI Empty n r (some (cardCheck w c)) s v)))
     (fun (a : Avatar) (y : Text) (z : Value) (k : W -> Prod W X) => fun (w : W) =>
-      k (avatarPut w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => avatarI Empty n r o (attrSet s y z) v)))
+      withAvatar (Prod W X) w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => k (worldSet w (avatarId a) (avatarI Empty n r o (attrSet s y z) v))))
     (fun (a : Avatar) (y : Text) (k : Option Value -> W -> Prod W X) => fun (w : W) =>
       k (withAvatar (Option Value) w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => attrGet s y)) w)
     (fun (a : Avatar) (k : List VirtualItem -> W -> Prod W X) => fun (w : W) =>
       k (withAvatar (List VirtualItem) w a (fun (n : Text) (r : Role) (o : Option VirtuCard) (s : Attributes) (v : List VirtualItem) => v)) w)
     (fun (a : Avatar) (m : Credits) (k : VirtuCard -> W -> Prod W X) => fun (w : W) =>
-      k (cardRef Empty (listSize Instance w))
-        (listSnoc Instance w (cardI Empty (avatarCheck w a) (creditsCheck m) (low Empty) (cons (pair (create Empty) (pair m (creditsCheck m))) nil))))
+      k (cardRef Empty (worldCount w))
+        (worldSnoc w (cardI Empty (avatarCheck w a) (creditsCheck m) (low Empty) (cons (pair (create Empty) (pair m (creditsCheck m))) nil))))
     (fun (c : VirtuCard) (k : Credits -> W -> Prod W X) => fun (w : W) =>
       k (withCard Credits w c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => b)) w)
     (fun (c : VirtuCard) (k : SecurityLevel -> W -> Prod W X) => fun (w : W) =>
@@ -432,13 +791,13 @@ def run : (X : Type 0) -> Virt X -> W -> Prod W X :=
       option (fun (u : Unit) => k none w) (fun (v : W) (u : Unit) => k (some unit) v) (cardSub w c m (debited Empty)) unit)
     (fun (c : VirtuCard) (m : Credits) (k : W -> Prod W X) => fun (w : W) => k (cardAdd w c m (credited Empty)))
     (fun (c : VirtuCard) (e : SecurityLevel) (k : W -> Prod W X) => fun (w : W) =>
-      k (withCard W w c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => listSet Instance w (cardId c) (cardI Empty o b e h))))
+      k (withCard W w c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => worldSet w (cardId c) (cardI Empty o b e h))))
     (fun (c : VirtuCard) (k : List Entry -> W -> Prod W X) => fun (w : W) =>
       k (withCard (List Entry) w c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => h)) w)
     (fun (c : VirtuCard) (d : VirtuCard) (m : Credits) (k : Option Unit -> W -> Prod W X) => fun (w : W) =>
       option (fun (u : Unit) => k none w) (fun (v : W) (u : Unit) => k (some unit) v) (cardTransfer w c d m) unit)
     (fun (n : Text) (y : Text) (k : VirtualTerminal -> W -> Prod W X) => fun (w : W) =>
-      k (terminalRef Empty (listSize Instance w)) (listSnoc Instance w (terminalI Empty n y nil)))
+      k (terminalRef Empty (worldCount w)) (worldSnoc w (terminalI Empty n y nil)))
     (fun (t : VirtualTerminal) (n : Text) (p : Credits) (y : Text) (k : W -> Prod W X) => fun (w : W) =>
       k (terminalPut w t (fun (a : Text) (b : Text) (x : List Listing) => terminalI Empty a b (listSnoc Listing x (pair n (pair (creditsCheck p) (pair y none)))))))
     (fun (t : VirtualTerminal) (z : VirtualItem) (k : W -> Prod W X) => fun (w : W) =>
@@ -452,13 +811,13 @@ def run : (X : Type 0) -> Virt X -> W -> Prod W X :=
       option (fun (u : Unit) => k none w) (fun (g : Prod W VirtualItem) (u : Unit) => k (some (second g)) (first g))
         (purchaseIn w t (withCard Avatar w c (fun (o : Avatar) (b : Credits) (l : SecurityLevel) (h : List Entry) => o)) n c) unit)
     (fun (n : Text) (y : Text) (v : Credits) (k : VirtualItem -> W -> Prod W X) => fun (w : W) =>
-      k (itemRef Empty (listSize Instance w)) (listSnoc Instance w (itemI Empty n y (creditsCheck v) (common Empty) nil)))
+      k (itemRef Empty (worldCount w)) (worldSnoc w (itemI Empty n y (creditsCheck v) (common Empty) attrNil)))
     (fun (z : VirtualItem) (e : Rarity) (k : W -> Prod W X) => fun (w : W) =>
       k (itemPut w z (fun (n : Text) (y : Text) (v : Credits) (r : Rarity) (s : Attributes) => itemI Empty n y v e s)))
     (fun (z : VirtualItem) (k : Credits -> W -> Prod W X) => fun (w : W) =>
       k (withItem Credits w z (fun (n : Text) (y : Text) (v : Credits) (r : Rarity) (s : Attributes) => creditsMul v (multiplier r))) w)
     (fun (z : VirtualItem) (y : Text) (e : Value) (k : W -> Prod W X) => fun (w : W) =>
-      k (itemPut w z (fun (n : Text) (b : Text) (v : Credits) (r : Rarity) (s : Attributes) => itemI Empty n b v r (attrSet s y e))))
+      withItem (Prod W X) w z (fun (n : Text) (b : Text) (v : Credits) (r : Rarity) (s : Attributes) => k (worldSet w (itemId z) (itemI Empty n b v r (attrSet s y e)))))
     (fun (z : VirtualItem) (y : Text) (k : Option Value -> W -> Prod W X) => fun (w : W) =>
       k (withItem (Option Value) w z (fun (n : Text) (b : Text) (v : Credits) (r : Rarity) (s : Attributes) => attrGet s y)) w)
     (fun (a : Avatar) (f : Prod Text Text -> W -> Prod W X) => refl)
@@ -472,5 +831,17 @@ def run : (X : Type 0) -> Virt X -> W -> Prod W X :=
     (fun (t : VirtualTerminal) (f : Prod (List Listing) (List Listing) -> W -> Prod W X) => refl)
     (fun (z : VirtualItem) (f : Prod Credits Credits -> W -> Prod W X) => refl)
     (fun (z : VirtualItem) (y : Text) (f : Prod (Option Value) (Option Value) -> W -> Prod W X) => refl)
+    (fun (c : VirtuCard) (u : SecurityLevel) (v : SecurityLevel) (k : W -> Prod W X) => fun (i : I) => fun (w : W) =>
+      k (secLaw c u v w @ i))
+    (fun (z : VirtualItem) (u : Rarity) (v : Rarity) (k : W -> Prod W X) => fun (i : I) => fun (w : W) =>
+      k (rarLaw z u v w @ i))
+    (fun (a : Avatar) (y : Text) (u : Value) (v : Value) (k : W -> Prod W X) => fun (i : I) => fun (w : W) =>
+      asetLaw X a y u v k w @ i)
+    (fun (z : VirtualItem) (y : Text) (u : Value) (v : Value) (k : W -> Prod W X) => fun (i : I) => fun (w : W) =>
+      isetLaw X z y u v k w @ i)
+    (fun (a : Avatar) (y : Text) (v : Value) (f : Option Value -> W -> Prod W X) => fun (i : I) => fun (w : W) =>
+      agetLaw X a y v f w @ i)
+    (fun (z : VirtualItem) (y : Text) (v : Value) (f : Option Value -> W -> Prod W X) => fun (i : I) => fun (w : W) =>
+      igetLaw X z y v f w @ i)
     (fun (v : X) => fun (w : W) => pair w v)
     t

@@ -607,6 +607,17 @@ static int blocked(Machine *m, const Value *s, Op op, uint32_t inst, uint32_t fi
   return 0;
 }
 
+/* S, when S is a stuck refUnknown (S6R K3), else NULL. */
+static const Value *ref_unknown_of(const Value *s) {
+  return s != NULL && s->kind == VAL_STUCK && s->op == OP_REF_UNKNOWN && s->argc == 2u ? s : NULL;
+}
+
+/* refUnknown T id for the stuck refUnknown S (S6R K3): an eliminator at S
+   gives the refusal at its result type T (C28). */
+static const Value *ref_unknown_at(Machine *m, const Value *type, const Value *s) {
+  return type == NULL ? NULL : make(m, VAL_STUCK, OP_REF_UNKNOWN, 0, 2, type, s->args[1], NULL);
+}
+
 static void buf_init(ValBuf *buf) {
   buf->items = NULL;
   buf->count = 0;
@@ -677,6 +688,9 @@ const Value *apply_value(Machine *m, const Value *fn, const Value *arg) {
   Value *v;
   if (fn == NULL || arg == NULL)
     return NULL;
+  /* S6R K3: refUnknown (Pi A B) id at x is refUnknown (B x) id. */
+  if (ref_unknown_of(fn) != NULL && fn->args[0]->kind == VAL_PI)
+    return ref_unknown_at(m, closure_apply(m, fn->args[0], arg), fn);
   switch (fn->kind) {
   case VAL_LAM:
     return closure_apply(m, fn, arg);
@@ -895,8 +909,10 @@ static const Value *reduce_fold_nat(Machine *m, const Value *const *a, uint32_t 
   return acc;
 }
 
-/* fold f z xs: the right fold. The end of the list is folded first. */
-static const Value *reduce_fold_list(Machine *m, const Value *const *a) {
+/* fold f z xs: the right fold. The end of the list is folded first. RT is
+   the result type of the fold in ENV, or NULL (S6R K3): a refUnknown end
+   gives refUnknown RT id. */
+static const Value *reduce_fold_list(Machine *m, const Value *const *a, const Env *env, const Core *rt) {
   const Value *acc = NULL;
   Spine s;
   uint32_t i;
@@ -906,9 +922,16 @@ static const Value *reduce_fold_list(Machine *m, const Value *const *a) {
   case SCRUT_TRAP:
     acc = s.tail;
     break;
-  case SCRUT_NEUTRAL:
-    acc = make(m, VAL_STUCK, OP_FOLD_LIST, 0, 3, a[0], a[1], s.tail);
+  case SCRUT_NEUTRAL: {
+    const Value *res = rt == NULL ? NULL : eval_core(m, env, rt);
+    if (rt != NULL && res == NULL)
+      return NULL;
+    acc = res != NULL && ref_unknown_of(s.tail) != NULL ? ref_unknown_at(m, res, s.tail) : make(m, VAL_STUCK, OP_FOLD_LIST, 0, 3, a[0], a[1], s.tail);
+    /* Keep the type on the tail, including when a step wraps it. */
+    if (acc != NULL && acc->kind == VAL_STUCK && acc->op == OP_FOLD_LIST)
+      ((Value *)acc)->dom = res;
     break;
+  }
   case SCRUT_VALUE:
     acc = val_is(s.tail, OP_NIL) ? a[1] : internal(m, "a list that does not end in nil");
     break;
@@ -985,7 +1008,7 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   case SCRUT_TRAP:
     return x;
   case SCRUT_NEUTRAL:
-    return stuck_fold(m, family, cases, ncases, x);
+    return ref_unknown_of(x) != NULL ? ref_unknown_at(m, fold_res(m, family, cases, ncases), x) : stuck_fold(m, family, cases, ncases, x);
   case SCRUT_VALUE:
     break;
   }
@@ -1139,6 +1162,8 @@ static const Value *elim_family(Machine *m, uint32_t family, const Value *const 
   uint32_t i;
   if (x == NULL)
     return NULL;
+  if (ref_unknown_of(x) != NULL)
+    return ref_unknown_at(m, apply_value(m, a[0], x), x);
   if (blocked(m, x, OP_ELIM, n - 2u, family + 1u, a, n, &out))
     return out;
   if (val_is(x, OP_HCOMP))
@@ -3108,18 +3133,22 @@ static const Value *reduce_out(Machine *m, uint32_t inst, const Value *const *a,
 }
 
 /* textEq a b (S5): some of the unit value when the bytes agree, else none.
-   A neutral argument stays stuck. */
+   A neutral argument stays stuck. S6R K4: convertible arguments give some
+   of the unit value, also when they are neutral. The levels of the test
+   are above the fresh levels, as in line_constant (open point 1). */
 static const Value *text_eq(Machine *m, const Value *const *a, uint32_t n) {
   const Value *out;
   const Value **some;
   if (a[0]->kind == VAL_TRAP || a[1]->kind == VAL_TRAP)
     return a[0]->kind == VAL_TRAP ? a[0] : a[1];
-  if (blocked(m, a[0], OP_TEXT_EQ, 0, 0, a, n, &out) || blocked(m, a[1], OP_TEXT_EQ, 0, 0, a, n, &out))
-    return out;
-  if (a[0]->kind != VAL_TEXT || a[1]->kind != VAL_TEXT)
-    return internal(m, "a Text operation on a value that is not a Text");
-  if (a[0]->nat != a[1]->nat || memcmp(a[0]->name, a[1]->name, (size_t)a[0]->nat) != 0)
-    return constant(m, OP_NONE);
+  if (!conv_values(m, KAN_FRESH_BASE + KAN_FRESH_MASK + 1u, a[0], a[1])) {
+    if (blocked(m, a[0], OP_TEXT_EQ, 0, 0, a, n, &out) || blocked(m, a[1], OP_TEXT_EQ, 0, 0, a, n, &out))
+      return out;
+    if (a[0]->kind != VAL_TEXT || a[1]->kind != VAL_TEXT)
+      return internal(m, "a Text operation on a value that is not a Text");
+    if (a[0]->nat != a[1]->nat || memcmp(a[0]->name, a[1]->name, (size_t)a[0]->nat) != 0)
+      return constant(m, OP_NONE);
+  }
   some = arena_alloc(m->arena, sizeof *some);
   if (some == NULL)
     return oom(m);
@@ -3221,7 +3250,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_FOLD_NAT:
     return reduce_fold_nat(m, a, n);
   case OP_FOLD_LIST:
-    return reduce_fold_list(m, a);
+    return reduce_fold_list(m, a, NULL, NULL);
   case OP_FOLD_FAMILY:
     return fold_family(m, inst, a, n - 2u, a[n - 1u]);
   case OP_FILTER:
@@ -3290,8 +3319,14 @@ static const Value *eval_op(Machine *m, const Env *env, const Core *c) {
     if (i == 0 && c->op == OP_FIN_CASE && args[0]->kind == VAL_NAT)
       return args[0]->nat < c->argc - 1u ? eval_core(m, env, c->args[args[0]->nat + 1u]) : internal(m, "a Fin case on a value out of range");
   }
+  /* S6R K3: option and finCase at a refUnknown give refUnknown at the
+     result type in the core; the List fold takes it at its end. */
+  if (c->a != NULL && (c->op == OP_OPTION_ELIM || c->op == OP_FIN_CASE) && ref_unknown_of(args[c->op == OP_FIN_CASE ? 0u : 2u]) != NULL)
+    return ref_unknown_at(m, eval_core(m, env, c->a), args[c->op == OP_FIN_CASE ? 0u : 2u]);
+  if (c->op == OP_FOLD_LIST)
+    return reduce_fold_list(m, args, env, c->a);
   out = (Value *)reduce_op(m, c->op, c->inst, c->field, args, c->argc);
-  if (out != NULL && ((out->kind == VAL_STUCK && out->op == OP_FIN_CASE) || val_is(out, OP_COUNFOLD)) && c->a != NULL) {
+  if (out != NULL && ((out->kind == VAL_STUCK && (out->op == OP_FIN_CASE || out->op == OP_OPTION_ELIM)) || val_is(out, OP_COUNFOLD)) && c->a != NULL) {
     out->dom = eval_core(m, env, c->a);
     if (out->dom == NULL)
       return NULL;
@@ -3830,7 +3865,7 @@ static const Core *quote_op(Machine *m, uint32_t level, const Value *v) {
   c->field = v->field;
   c->args = args;
   c->argc = v->argc;
-  if ((v->op == OP_FIN_CASE || v->op == OP_COUNFOLD) && v->dom != NULL) {
+  if ((v->op == OP_FIN_CASE || v->op == OP_OPTION_ELIM || v->op == OP_FOLD_LIST || v->op == OP_COUNFOLD) && v->dom != NULL) {
     c->a = quote_value(m, level, v->dom);
     if (c->a == NULL)
       return NULL;

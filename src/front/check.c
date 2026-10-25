@@ -55,6 +55,9 @@ typedef struct {
   uint32_t field_top;
   int field_dep;
   int field_rec;
+  /* The origin of the declaration that is checked (S6R D1): rule R2 of
+     refUnknown reads it. */
+  Origin origin;
 } Checker;
 
 typedef enum {
@@ -832,7 +835,14 @@ static const Core *rule_option(Call *k) {
   z = res != NULL ? check(c, k->args[0], res) : infer(c, k->args[0], &res);
   f = z == NULL ? NULL : check(c, k->args[1], val_arrow(c->m, ot->args[0], res));
   k->type = res;
-  return op3(c, OP_OPTION_ELIM, 0, 3, z, f, o);
+  {
+    /* S6R K3: the result type, for an option at a refUnknown. */
+    Core *out = (Core *)op3(c, OP_OPTION_ELIM, 0, 3, z, f, o);
+    if (out == NULL || res == NULL)
+      return out;
+    out->a = quote_value(c->m, c->level, res);
+    return out->a == NULL ? NULL : out;
+  }
 }
 
 /* The cell types S and T are the same cell at the same parameters, with
@@ -1051,7 +1061,14 @@ static const Core *fold_simple(Call *k, const Core *s, const Value *st) {
   const Core *f = z == NULL ? NULL : check(c, k->args[0], step);
   k->used = 3u;
   k->type = res;
-  return op3(c, list ? OP_FOLD_LIST : OP_FOLD_NAT, 0, 3, f, z, s);
+  {
+    /* S6R K3: a List fold keeps its result type, for a refUnknown end. */
+    Core *out = (Core *)op3(c, list ? OP_FOLD_LIST : OP_FOLD_NAT, 0, 3, f, z, s);
+    if (out == NULL || !list || res == NULL)
+      return out;
+    out->a = quote_value(c->m, c->level, res);
+    return out->a == NULL ? NULL : out;
+  }
 }
 
 /* The Pi telescope of the fold case of CTOR around BODY, a core at the
@@ -2661,6 +2678,12 @@ static const Core *rule_ref_unknown(Call *k) {
   const Core *id = a == NULL ? NULL : check(c, k->args[1], nat_type(c));
   if (id == NULL)
     return NULL;
+  /* S6R Q1 (F20): refUnknown inhabits each type, thus only the domain
+     library can name it. */
+  if (c->origin == ORIGIN_PROGRAM) {
+    FAIL(c, "REFUSE_REF_UNKNOWN", "a program cannot name refUnknown (rule R2); only domain/domain.lang can");
+    return NULL;
+  }
   k->type = here(c, a);
   return op3(c, OP_REF_UNKNOWN, 0, 2, a, id, NULL);
 }
@@ -4353,6 +4376,7 @@ static int check_cocell(Checker *c, const Decl *d) {
 }
 
 static int check_decl(Checker *c, const Decl *d) {
+  c->origin = d->origin;
   if (d->kind == DECL_FAMILY && d->origin == ORIGIN_PROGRAM)
     return FAIL(c, "REFUSE_DATA", "a program cannot declare a family (rule R1); only domain/domain.lang can, and a program can declare a cell");
   if (d->kind == DECL_COFAMILY && d->origin == ORIGIN_PROGRAM)

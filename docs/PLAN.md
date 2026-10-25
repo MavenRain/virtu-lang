@@ -322,6 +322,66 @@ rulings:
   schemas. Q4 (a): the S6 build probes the 1-cell cycle on a scratch copy
   only, and records the result as an open point.
 
+### USER ruling (S6R kickoff)
+
+On 2026-10-25 the USER said: "Follow
+~/Documents/virtu-lang-work/S6R-build-PROMPT.md. Rulings: K1-K11 and
+Q1-Q3 all (a). After, if necessary, give next session prompt." Thus the
+S6R kickoff proposals (S6R-kickoff.md `## STEP 3 K rows`) are all (a).
+These are now rulings:
+
+- K1 the world is a list cell `WorldC` (`W := WorldC Unit`, nil is
+  `pure unit`), and `Attributes` is a list cell `AttrC`. The list
+  functions are folds over the cells. json.c reads the cells, and the JSON
+  does not change. The kernel gets no `List` eliminator.
+- K2 the library has a Bool cell, and the compares `natEqB` and
+  `textEqB` give it. The world lemmas split by `elim` on the Bool cell.
+  The kernel gets no rule for `natEq n n`.
+- K3 a refusal stays a refusal. The kernel propagates `refUnknown` at a
+  neutral scrutinee of the List fold, the family fold, the Option elim and
+  `finCase`, and in apply_value. The result type comes from the motive.
+  Conv compares two `refUnknown` values by their ids.
+- K4 `textEq t u` gives `some unit` when `t` and `u` are convertible, at
+  the conv level of the machine. A confluence note goes with the rule.
+- K5 the order of work: K2, K1, K4, K3 with Q1, the world lemmas, the 6
+  1-cells.
+- K6 `Virt` gets 6 1-cells (L1, L2, L3 for `avatarSet` and `itemSet`, L4
+  for `avatarSet` and `itemSet`) after the 11 L5 1-cells and before
+  `pure`. `Virt` then has 46 constructors. Each run path case applies a
+  world lemma.
+- K7 the tests: path regressions (6 law uses, 6 world lemmas, R3 and R4
+  rows), check refusals (the false list lemma, `elim` on `List`, Q1), and
+  one example with its JSON golden.
+- K8 the mutants X1 to X6, each with a killer.
+- K9 the predicted gate: examples 41, parse 16, check refusals 133, evals
+  212 + n, json 41, build refusals 8, regressions 6, printer 2, path
+  regressions about 273.
+- K10 the PLAN edits: 5.3, a soundness note for each kernel rule,
+  section 7, and this section.
+- K11 STATUS: open points 7 and 10 stay. F20 is a new open point unless
+  Q1 closes it.
+- Q1 (a): `check` refuses `refUnknown` in a program. Only the domain
+  library names it. The build probes that no closed term of a false
+  `Path` type checks through the library.
+- Q2 (a): `W` and `Attributes` change to cells in one slice.
+- Q3 (a): the R3 route is K3 (a).
+
+Two rulings came during the S6R build. For each one, the USER chose an
+option. The work files keep the option and the date, not more words.
+
+- Q-S6R-s9-1 (i), USER 2026-10-25 (S6R build s10): one fold for the
+  attribute write. `attrSet` is restated with the one fold `attrSetF`
+  over the `AttrC` cell. The other options were (ii) a kernel `Option`
+  elim and (iii) a restriction of the lemmas.
+- Q-S6R-s11-1 (a), USER 2026-10-25 (S6R build s12, through the question
+  tool): raise the arena of `accepts()` in test/path-regressions.c from
+  128 MB to 512 MB, in the test only. After chunk B, the row `law L5
+  2-dim: run of rrBal at an inner point (S6)` needs more than 128 MB. The
+  other options were (b) a new form of the law cases and (c) a change to
+  the conv of the engine. The CLI arena (1 GB, src/main.c) does not
+  change: `langc check` of that row as a program gives rc 0 (S6R build
+  s13).
+
 ## 2. The type constructors
 
 ### 2.1 The ambient category
@@ -517,6 +577,38 @@ The kernel is a port. It is not a new design.
 - S2 to S4 put the declaration forms of the request in front of the kernel:
   `cell` and `cocell`. The kernel families stay as the target of these
   forms, but a program cannot declare a family directly (O8).
+- S6R adds three kernel rules (S6R kickoff K3, K4 and Q1). K1 and K2 add
+  no kernel rule: the world, `Attributes` and Bool are library cells, and
+  json.c reads the cells. Each rule has a soundness note.
+  - R3 (K3 (a)), eval.c. At a stuck `refUnknown T id` as the scrutinee,
+    the `Option` elim and `finCase` give `refUnknown T' id`, where `T'`
+    is the result type from the motive (the checker writes it into the
+    core). The List fold gives it when the end of the list is a
+    `refUnknown`. The fold over a domain family gives it at a
+    `refUnknown` scrutinee, with the result type of the fold, and `elim`
+    over a domain family gives it with the motive at the scrutinee
+    (eval.c `fold_family` and `elim_family`). `apply_value` of `refUnknown (Pi A B) id` at `x` gives
+    `refUnknown (B x) id`. Soundness note (C28): the rule adds no
+    inhabitant of a type. Before the rule, `refUnknown` inhabits each
+    type (F20, the ExTT inconsistency of C28). The rule moves a stuck
+    term to the result type of its eliminator and keeps its id. The
+    runner refuses `refUnknown` at a closed world (EVAL_REF_UNKNOWN), as
+    in S5.
+  - R4 (K4 (a)), eval.c `text_eq`. `textEq t u` gives `some unit` when
+    `t` and `u` are convertible, also when they are neutral. The conv
+    test uses the levels above the fresh levels, as `line_constant` does
+    (open point 1). Else the S5 rule compares the bytes of two literals.
+    Confluence note (C27): the rule is not left-linear. Its critical pair
+    with the literal rule closes: two equal literals give `some unit` by
+    each rule. The reduction terminates, thus the Klop counterexample
+    does not apply. C27 stays PARTIAL until the paper section is read.
+  - R2 (Q1 (a)), check.c. `check` refuses `refUnknown` in a program
+    (REFUSE_REF_UNKNOWN). The checker keeps the origin of the
+    declaration that it checks (D1). Only domain/domain.lang can name
+    `refUnknown`. Soundness note (F20): R2 closes the direct route of
+    F20, because a program cannot write `refUnknown`
+    (test/check/ref-unknown-program.lang). The library can name it, thus
+    F20 stays an open point for the library terms (S6R kickoff K11).
 
 ## 4. The base types
 
@@ -601,7 +693,7 @@ value, no refund, no stock count, and no other base type. A card gets
 credits only from rows 8, 11, 13 and 16. The credits of a purchase leave
 the world (a terminal has no card).
 
-### 5.3 Laws (1-cells of `Virt`, S6)
+### 5.3 Laws (1-cells of `Virt`, S6 and S6R)
 
 Proposal (O23 (a)): these laws are 1-cells of `Virt`. The runner gives a
 path for each one. S6 adds only L5 as 1-cells (S6 kickoff K3 (a)). L1 to
@@ -625,8 +717,12 @@ the slice S6R gives their proofs at a variable world (section 7).
   (test/check/law-curried.lang).
 
 The laws hold at a known reference. At an unknown reference, the two
-sides refuse at a closed world (EVAL_REF_UNKNOWN). At a variable world,
-they are two different `refUnknown` neutrals.
+sides refuse at a closed world (EVAL_REF_UNKNOWN). In S6, at a variable
+world, they were two different `refUnknown` neutrals. In S6R, R3
+(section 3) moves a `refUnknown` to the result type of its eliminator
+and keeps its id. Thus at the empty world and a variable card, the two
+sides of L1 for `setSecurity` are convertible (the path regression
+`reference: setSecurity twice at a card of the empty world (S6R K3)`).
 
 In S6, `Virt` has 11 1-cells: one L5 law for each read row of 5.1
 (`rrName` to `rrIGet`, in the row order, after the 28 0-cells and before
@@ -661,6 +757,20 @@ satisfies the law.
 
 `credit c m >> credit c n` is not `credit c (m + n)`: the history has two
 entries. Thus no law joins two changes of a balance.
+
+In S6R, `Virt` gets 6 more 1-cells, after the 11 L5 1-cells and before
+`pure` (S6R kickoff K6 (a)): `wwSec` (L1), `wwRar` (L2), `wwASet` and
+`wwISet` (L3), `wrASet` and `wrISet` (L4). Thus `Virt` has 46
+constructors: 28 0-cells, 17 1-cells and `pure`. The routes of S6R are
+R1 as K1 (a) (the world `W := WorldC Unit` and `Attributes` are list
+cells), R2 as K2 (a) (a Bool cell in the library), R3 as K3 (a) and R4 as
+K4 (a) (section 3). The path case of `run` for each new 1-cell applies a
+world lemma at a variable world: `secLaw` (L1), `rarLaw` (L2), `asetLaw`
+and `isetLaw` (L3), `agetLaw` and `igetLaw` (L4). The world lemmas split by `elim` on
+the Bool cell. `attrSet` is restated with the one fold `attrSetF` over
+the `AttrC` cell (Q-S6R-s9-1 (i)). Thus O23 (a) is complete: L1 to L5 are
+1-cells of `Virt`, and the path case of `run` for each one is a proof at
+a variable world.
 
 ## 6. The JSON output
 
@@ -705,7 +815,7 @@ There is no IO, no network and no console program.
 | S4 | `cocell` declarations: `extract`, `extend`, `duplicate`, guarded `unfold`, lazy `out`; `Env`, `Stream`, `Cofree`, `Store`; the comonad laws as paths; O5. |
 | S5 | The base span: the carriers of section 4, the four classes, `Virt` with the 27 operations as 0-cells, the world, the runner and the JSON output of section 6. |
 | S6 | L5 of 5.3 as 11 1-cells of `Virt`, with `refl` runner paths; L1 to L4 as closed-world rows. |
-| S6R | The routes R1 to R4 of 5.3, each with a probe before code: the world lemmas, the proofs of L1 to L4 at a variable world, and L1 to L4 as 1-cells of `Virt` with their runner paths. Then O23 (a) is complete. S7 can come after S6R or in parallel with it. |
+| S6R | The routes R1 to R4 of 5.3, each with a probe before code: the world lemmas, the proofs of L1 to L4 at a variable world, and L1 to L4 as 1-cells of `Virt` with their runner paths. Then O23 (a) is complete. S7 can come after S6R or in parallel with it. Built: R1 to R4 as K1 to K4 (a), 6 1-cells (46 constructors), the mutants X1 to X6 killed, O23 (a) complete. |
 | S7 | Examples (a marketplace with two avatars, two terminals and a transfer), mutants, docs. Close. |
 
 Each slice ends with `make check` GREEN, guest test files for each new
@@ -762,6 +872,6 @@ Each item gives the proposal first.
   type; (b) the image names with underscores.
 - O23 Laws of `Virt`: (a) L1 to L5 as 1-cells in S6; (b) no 1-cells in
   `Virt`. S6 kickoff Q2 (a): S6 has the L5 1-cells only, and S6R adds L1
-  to L4.
+  to L4 (done: O23 (a) is complete, 5.3).
 - O24 Output: (a) the instances of the run of `main`, references as `id`;
   (b) also the kit instances (top level definitions with a data type).
