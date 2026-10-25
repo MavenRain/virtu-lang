@@ -5,3 +5,4 @@ codata.lang JSON_VALUE
 cell-function.lang JSON_VALUE
 credits-overflow.lang EVAL_CREDITS_OVERFLOW
 unknown-id.lang EVAL_REF_UNKNOWN
+law-path-main.lang JSON_MAIN_TYPE

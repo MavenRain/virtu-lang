@@ -277,6 +277,51 @@ Thus the S5 kickoff proposals K1 to K14 are all (a). These are now rulings:
 - K14 Q2 is dropped. The all-pairs idea is future work that needs a
   soundness argument first.
 
+### USER ruling (S6 kickoff)
+
+On 2026-10-24 the USER said: "Follow
+~/Documents/virtu-lang-work/S6-build-PROMPT.md. After, if necessary, give
+next session prompt." To the question on the S6 K rows (K1 to K11 and Q1
+to Q4 of S6-kickoff.md `## STEP 3 K rows`), the USER selected "All (a)
+(Recommended)". Thus the S6 kickoff proposals are all (a). These are now
+rulings:
+
+- K1 the laws are L1 to L4 of 5.3, with L4 in the continuation form
+  `avatarSet a k v (avatarGet a k t) = avatarSet a k v (t (some v))` for
+  `t : Option Value -> X` (and the same for `itemSet`), and L5 in the Prod
+  form `r a (fun x => r a (fun y => k (pair x y))) = r a (fun x => k (pair
+  x x))` for `k : Prod R R -> X`, one law for each of the 11 read rows. L1
+  to L3 are schema 3, L4 is schema 4 and L5 is schema 2 of the 7 global
+  state schemas of Plotkin and Power.
+- K2 a 1-cell declaration needs no kernel change. Each 1-cell takes X
+  explicitly. Each field name is new at the global level.
+- K3 in S6 only L5 is a 1-cell of `Virt`: 11 1-cells after `itemGet` and
+  before `pure`. `Virt` has 40 constructors, and the fold of `run` has 40
+  cases and 41 arguments. L1 to L4 are laws at known references, with
+  closed-world path regressions.
+- K4 each L5 path case of `run` is `refl`. L1 to L4 get no `run` path in
+  S6.
+- K5 a new slice does the routes R1 to R4, with its own kickoff and a row
+  in section 7. S6 has no kernel change.
+- K6 STATUS and 5.3 give the S6 answer to the S5 open points 1, 2, 5, 6
+  and 8. Open point 9 and the sites U1 to U10 stay.
+- K7 the tests are a new example with its JSON golden, 5 check refusals,
+  1 build refusal and 20 path regressions (11 L5 law uses, 6 closed-world
+  rows for L1 to L4, 3 two-dimensional rows).
+- K8 the S6 close runs W1 to W7 again at the S6 tree. W3 and W6 get
+  equivalent-mutant notes.
+- K9 the predicted S6 gate is: examples 40, parse 16, check 130, evals
+  210 + n, json 40, build refusals 8, regressions 6, printer 2, path
+  regressions 255.
+- K10 5.3 gets the K1 forms, the condition "at a known reference", and
+  the C22 and C23 cites. Section 7 gets a row for the R1 to R4 slice.
+- K11 Q1 (a): a refusal stays a refusal; the new slice adds `refUnknown`
+  propagation for the world lemma. Q2 (a): S6 has no L1 to L4 1-cells; O23
+  (a) is complete after the R1 to R4 slice. Q3 (a): schema 1 and the
+  schemas 5 to 7 are not in S6, and 5.3 says that it has 3 of the 7
+  schemas. Q4 (a): the S6 build probes the 1-cell cycle on a scratch copy
+  only, and records the result as an open point.
+
 ## 2. The type constructors
 
 ### 2.1 The ambient category
@@ -559,16 +604,60 @@ the world (a terminal has no card).
 ### 5.3 Laws (1-cells of `Virt`, S6)
 
 Proposal (O23 (a)): these laws are 1-cells of `Virt`. The runner gives a
-path for each one.
+path for each one. S6 adds only L5 as 1-cells (S6 kickoff K3 (a)). L1 to
+L4 are laws at known references: S6 has closed-world rows for them, and
+the slice S6R gives their proofs at a variable world (section 7).
 
 - L1 `setSecurity c l >> setSecurity c l' = setSecurity c l'`.
 - L2 `setRarity i r >> setRarity i r' = setRarity i r'`.
 - L3 `avatarSet a k v >> avatarSet a k v' = avatarSet a k v'`, and the
   same for `itemSet`.
 - L4 `avatarSet a k v >> avatarGet a k = avatarSet a k v >> pure (some v)`,
-  and the same for `itemSet`.
+  and the same for `itemSet`. As a 1-cell, L4 has the continuation form
+  `avatarSet a k v (avatarGet a k t) = avatarSet a k v (t (some v))` for
+  `t : Option Value -> X`. A boundary cannot contain `pure`: a boundary
+  slot has the carrier type `X`, thus `pure` has no declared type there,
+  and `check` gives TYPE_INFER (test/check/law-pure-boundary.lang).
 - L5 Two reads give the same value: `r >>= \x. r >>= \y. f x y =
-  r >>= \x. f x x` for each read row.
+  r >>= \x. f x x` for each read row. As a 1-cell, L5 has the Prod form
+  `r a (fun x => r a (fun y => k (pair x y))) = r a (fun x => k (pair x x))`
+  for `k : Prod R R -> X`. A curried `k : R -> R -> X` gives CELL_POSITIVE
+  (test/check/law-curried.lang).
+
+The laws hold at a known reference. At an unknown reference, the two
+sides refuse at a closed world (EVAL_REF_UNKNOWN). At a variable world,
+they are two different `refUnknown` neutrals.
+
+In S6, `Virt` has 11 1-cells: one L5 law for each read row of 5.1
+(`rrName` to `rrIGet`, in the row order, after the 28 0-cells and before
+`pure`). A read does not change the world, thus each path case of `run`
+is `refl`. L1 to L4 are not 1-cells in S6. They have path regressions at
+closed worlds. A proof at a variable world needs a world lemma, and the
+lemma needs the routes R1 to R4 of the slice S6R: R1 a `List` eliminator
+or `W` as a list cell; R2 a Bool compare in the library or a rule for
+`natEq n n`; R3 the propagation of `refUnknown` in the kernel; R4 a rule
+for `textEq t t`.
+
+Sources (C22, C23). L1 to L5 are 3 of the 7 axiom schemas of global state
+in G. Plotkin and J. Power, "Notions of computation determine monads"
+(FoSSaCS 2002, section 3). A location of `Virt` is a reference and a
+field, or a reference and a key. L1 to L3 are schema 3 (two updates at
+one location: the second update wins). L4 is schema 4 (an update and then
+a lookup at the same location give the new value). L5 is schema 2 (two
+lookups at one location are one lookup). 5.3 does not have schema 1 (a
+lookup and then an update with the value found do not change the store)
+or the schemas 5 to 7 (operations at two different locations commute).
+The completeness result of the source is for the monad of a store `V^L`.
+`Virt` is not that monad: an unknown reference refuses, and `credit`
+writes a history entry. Thus 5.3 does not say that L1 to L5 are all the
+laws of `Virt`. G. Plotkin and M. Pretnar, "Handling Algebraic Effects"
+(LMCS 9(4:23), 2013, section 1.3): a handler is correct only when its
+interpretation satisfies the equations of the theory, and the source
+leaves this check to the programmer. In virtu-lang, the kernel does this
+check: a fold over a cell with a 1-cell needs a path case, and `check`
+compares the two ends of the path case with the images of the two
+boundary ends. Thus the path case of `run` is the proof that the runner
+satisfies the law.
 
 `credit c m >> credit c n` is not `credit c (m + n)`: the history has two
 entries. Thus no law joins two changes of a balance.
@@ -615,7 +704,8 @@ There is no IO, no network and no console program.
 | S3 | n-cells: path and square cells, `Trunc1`, `Trunc0`, `Quot`, one localization example, `State S`; `bind` and `fold` through each cell. |
 | S4 | `cocell` declarations: `extract`, `extend`, `duplicate`, guarded `unfold`, lazy `out`; `Env`, `Stream`, `Cofree`, `Store`; the comonad laws as paths; O5. |
 | S5 | The base span: the carriers of section 4, the four classes, `Virt` with the 27 operations as 0-cells, the world, the runner and the JSON output of section 6. |
-| S6 | The laws of 5.3 as 1-cells of `Virt`, with the runner paths. |
+| S6 | L5 of 5.3 as 11 1-cells of `Virt`, with `refl` runner paths; L1 to L4 as closed-world rows. |
+| S6R | The routes R1 to R4 of 5.3, each with a probe before code: the world lemmas, the proofs of L1 to L4 at a variable world, and L1 to L4 as 1-cells of `Virt` with their runner paths. Then O23 (a) is complete. S7 can come after S6R or in parallel with it. |
 | S7 | Examples (a marketplace with two avatars, two terminals and a transfer), mutants, docs. Close. |
 
 Each slice ends with `make check` GREEN, guest test files for each new
@@ -671,6 +761,7 @@ Each item gives the proposal first.
 - O22 Source names: (a) the camel case names of 5.1, `kind` for the item
   type; (b) the image names with underscores.
 - O23 Laws of `Virt`: (a) L1 to L5 as 1-cells in S6; (b) no 1-cells in
-  `Virt`.
+  `Virt`. S6 kickoff Q2 (a): S6 has the L5 1-cells only, and S6R adds L1
+  to L4.
 - O24 Output: (a) the instances of the run of `main`, references as `id`;
   (b) also the kit instances (top level definitions with a data type).

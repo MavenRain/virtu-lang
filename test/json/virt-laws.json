@@ -1,0 +1,1 @@
+{"virtu-lang":1,"instances":[{"id":0,"class":"Avatar","state":{"name":"Ada","role":"explorer","virtucard":null,"attributes":{},"inventory":[]}},{"id":1,"class":"VirtuCard","state":{"owner":0,"balance":15,"security_level":"low","history":[{"kind":"create","amount":5,"balance":5},{"kind":"credit","amount":10,"balance":15}]}}]}

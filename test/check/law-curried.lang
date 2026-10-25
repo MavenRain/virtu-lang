@@ -1,0 +1,4 @@
+-- S6 K7: an L5 law with a curried continuation. The carrier X must be a
+-- whole field or the result of a function field (CELL_POSITIVE).
+cell LzRC (X : Type 0) := lzRd : (lzRdF : Nat -> X) -> X
+  | lzRR : (lzRRF : Nat -> Nat -> X) -> (i : I) -> X [ ~i -> lzRd X (fun (x : Nat) => lzRd X (fun (y : Nat) => lzRRF x y)), i -> lzRd X (fun (x : Nat) => lzRRF x x) ]

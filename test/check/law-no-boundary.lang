@@ -1,0 +1,4 @@
+-- S6 K7: a constructor with an interval field and no boundary (W4,
+-- HIT_BOUNDARY).
+cell MzCC (X : Type 0) := mzCS : (mzCSA : Nat) -> (mzCST : X) -> X
+  | mzCL : (mzCLA : Nat) -> (mzCLT : X) -> (i : I) -> X

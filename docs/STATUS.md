@@ -595,3 +595,95 @@ Review of all 44 staged paths found three MEDIUM defects. CI and test routing we
 - A self transfer, a transfer with insufficient funds, or a purchase with no matching listing could skip checking a supplied reference and return none. For example, a self transfer at card id 0 in the empty world succeeded instead of EVAL_REF_UNKNOWN. cardTransfer and purchaseIn now validate their references before these branches, including the referenced class.
 
 The C runner has 15 added cases: four reference refusals, three Text composition cases, seven malformed UTF-8 refusals, and valid UTF-8 with escaped NUL. The reproduced failures precede the fixes. The corrected runner passes 235 cases. The original S5 gate table and mutant results above remain historical records of the candidate before this review.
+
+## S6
+
+S6 adds the L5 laws of PLAN 5.3 (two reads give the same value) as 11 1-cells of `Virt`, one for each read row of PLAN 5.1, with a `refl` path case in `run` for each. L1 to L4 are laws at known references with closed-world rows; their proofs at a variable world go to the new slice S6R (PLAN section 7). The kickoff proposals K1 to K11 and the questions Q1 to Q4 are all (a) (docs/PLAN.md, `### USER ruling (S6 kickoff)`). The claims C22 to C25 are in ~/Documents/virtu-lang-work/S6-claims.md and the build records are in ~/Documents/virtu-lang-work/s6-build/ (outside the repo). src/ does not change.
+
+### Gate
+
+`make -B -j 2 check` exits 0 (log ~/Documents/virtu-lang-work/s6-build/gate.log). The S5 pin is 0b6cd7b (tree b89e1f93; gate log s6k-gate0.log).
+
+| gate line | S5 (pin) | K9 | S6 | difference and cause |
+|---|---|---|---|---|
+| examples | 39 | 40 | 40 | +1: examples/virt-laws.lang |
+| parse refusals | 16 | 16 | 16 | none |
+| check refusals | 125 | 130 | 130 | +5: the 5 law-*.lang files in test/check (Added tests) |
+| evals | 210 | 210 + n | 212 | +2 (n = 2): `virt-laws readTwo => 10`, `virt-laws readOne => 10` |
+| json (builds) | 39 | 40 | 40 | +1: test/json/virt-laws.json |
+| build refusals | 7 | 8 | 8 | +1: test/emit/law-path-main.lang |
+| regressions | 6 | 6 | 6 | none |
+| printer regressions | 2 | 2 | 2 | none |
+| path regressions | 235 | 255 | 255 | +20 rows (Added tests) |
+
+Each line is equal to the K9 prediction.
+
+### K rows
+
+- K1: the laws of PLAN 5.3. L4 has the continuation form `avatarSet a k v (avatarGet a k t) = avatarSet a k v (t (some v))` and L5 has the Prod form `r a (fun x => r a (fun y => k (pair x y))) = r a (fun x => k (pair x x))` for `k : Prod R R -> X`. C22: L1 to L3 are schema 3, L4 is schema 4 and L5 is schema 2 of the 7 global state schemas.
+- K2: no kernel change for the declaration. Each 1-cell takes X explicitly, as in StateC. Each field name is new at the global level (open point 2).
+- K3: L5 only. The 1-cells `rrName`, `rrRole`, `rrCard`, `rrGet`, `rrInv`, `rrBal`, `rrSec`, `rrHist`, `rrTInv`, `rrVal` and `rrIGet` (domain/domain.lang:389 to 399) come after the last 0-cell and before `pure`. `cell Virt` (domain.lang:361) has 40 constructors.
+- K4: each L5 path case of `run` (domain.lang:405) is `refl`: a read does not change the world, thus the two images are convertible. L1 to L4 get no `run` path in S6.
+- K5: no kernel change in S6. The routes R1 to R4 go to the slice S6R.
+- K6: the S5 leftovers ([Open points](#open-points-s6-build-promptmd)).
+- K7: [Added tests](#added-tests-k7-1).
+- K8: [Mutants (K8)](#mutants-k8): 5 of 7 KILLED; W3 SURVIVED (likely equivalent) and W6 SURVIVED (equivalent).
+- K9: the gate above.
+- K10: the PLAN edits: section 1 `### USER ruling (S6 kickoff)`; 5.3 (L5 only in S6, the L4 and L5 forms, the known reference condition, R1 to R4, the C22 and C23 cites); section 7 (the S6 row and the new S6R row); an O23 note.
+- K11: Q1 (a): R3 is the propagation of `refUnknown` in the kernel, in S6R; a refusal stays a refusal. Q2 (a): L5 only in S6. Q3 (a): 5.3 has 3 of the 7 schemas. Q4 (a): the 1-cell cycle probe is on a scratch copy only (open point 5).
+
+The order of the fold cases of `run`: the 28 0-cells in the PLAN 5.1 row order; the 11 L5 laws in the read row order (rows 2, 3, 4, 6, 7, 9, 10, 15, 20, 25 and 27: `avatarName`, `avatarRole`, `avatarCard`, `avatarGet`, `avatarInventory`, `cardBalance`, `cardSecurity`, `cardHistory`, `terminalInventory`, `itemValue`, `itemGet`); then `pure`. 40 cases, thus 41 fold arguments with the scrutinee, under SPINE_MAX 64 (src/front/check.c:13).
+
+### Claims (S6-claims.md)
+
+- C22: L1 to L5 as the equations of global state (Plotkin and Power, FoSSaCS 2002, section 3). CONFIRMED: 3 of the 7 schemas (2, 3 and 4). Schema 1 and the commutation schemas 5 to 7 are not in 5.3 (Q3). The completeness result is for a store `V^L`; `Virt` is not that monad, thus S6 does not claim that L1 to L5 are all the laws of `Virt`.
+- C23: a handler is correct only when it satisfies the equations of the theory (Plotkin and Pretnar, LMCS 2013, section 1.3). CONFIRMED. The kernel checks the condition: a fold over a cell with a 1-cell needs a path case (test/check/law-no-case.lang), and the path case type has the two images as its ends (W1).
+- C24: the S5 C20 uniqueness note. CARRIED: S6 claims no uniqueness of `run`.
+- C25: the PLAN sources for a law. NONE IN SECTION 6: PLAN 6 cites RFC 8259 for JSON notes only. PLAN 5.3 now cites C22 and C23.
+
+### Added tests (K7)
+
+- examples/virt-laws.lang with test/json/virt-laws.json and 2 eval rows (`readTwo`, `readOne`: the two ends of rrBal at a closed world, 10 and 10). The example has `main` (rrBal at i0), `lawsPath` (the law in `Virt Unit`) and `lawsRun` (the runner path at a variable world).
+- test/check, 5 files: law-curried.lang (CELL_POSITIVE: a curried L5), law-false-refl.lang (PATH_END: a `refl` case at a false law, the W1 killer), law-no-case.lang (TYPE_MISMATCH: a fold with no path case), law-pure-boundary.lang (TYPE_INFER: `pure` in a boundary, D2), law-no-boundary.lang (HIT_BOUNDARY: an interval field with no boundary, the W4 killer).
+- test/emit/law-path-main.lang (JSON_MAIN_TYPE: a `main` of a Path type, the W7 killer).
+- test/path-regressions.c, 20 rows: 11 law uses, "law L5 rrName: the law in Virt and its runner path at a variable world (S6)" and the same for the other 10 reads; 6 closed-world rows, "law L1 at a closed world, setSecurity (S6)", L2 setRarity, L3 avatarSet, L3 itemSet, L4 avatarSet, L4 itemSet; 3 two-dimensional rows (the W5 killers), "law 2-dim: the fold path case at an inner point, variable t (S6 W5)", the same at a closed t, and "law L5 2-dim: run of rrBal at an inner point (S6)".
+- The codes come from real runs (s6-build/b1.log). No file uses a fixture, thus test/gate-domain.txt does not change.
+
+### Deviations
+
+- D1: examples/laws.lang and test/json/laws.json exist at the pin (the S1 normalization laws). The new example is examples/virt-laws.lang with test/json/virt-laws.json. K7 named laws.lang.
+- D2: K7 predicted HIT_BOUNDARY (fold_image, check.c:1273) for `pure` in a boundary. Three forms (s6-build/pure/pA.lang to pC.lang) each give TYPE_INFER: "LzPC: pure needs a declared type Option A, List A, Sum E A or a cell type C ps here". A boundary slot has the carrier type X, thus `pure` has no declared type there, and the check stops before a fold. The row is law-pure-boundary.lang (TYPE_INFER); the count stays 130. The reason for the L4 continuation form is TYPE_INFER, not the fold_image refusal of the S6 kickoff survey c.
+- D3: one `main` is at one end only. examples/virt-laws.lang `main` uses rrBal at i0. A scratch copy at i1 (s6-build/run/virt-laws-i1.lang) builds with rc 0, and its JSON is equal (cmp rc 0).
+
+### Open points (S6-build-PROMPT.md)
+
+1. Fuel: no gate file stops at EVAL_FUEL_STEPS. The gate time is not measured.
+2. The L5 field names give no REFUSE_NAME.
+3. The evals count n is 2 (`readTwo`, `readOne`).
+4. The `refl` run case of each of the 11 reads checks at the real `Virt` (each gate file loads the domain), and the 11 law-use rows pass.
+5. Q4 (scratch only, s6-build/q4/cycle.lang: the 1-cell `lzQA` names the later 1-cell `lzQB` at ~i, and `lzQB` names `lzQA` at i): rc 1 in about 1 s, NAME_UNKNOWN "LzQC: unknown name lzQB". A boundary cannot name a later 1-cell, thus the 1-cell cycle of Q4 cannot be declared.
+6. The 2-dimensional row at `run` passes; K7 (a) stays.
+7. F11: `check` accepts a cell whose 1-cell boundary names a later 0-cell when no fold runs over the cell (s6k-mutk/k3b.lang, rc 0). Only a fold (fold_image, check.c:1273) refuses it. This stays open.
+8. The S5 open points: 1 (and F4): the laws hold at a known reference; at an unknown reference the two sides refuse at a closed world, and at a variable world they are two different `refUnknown` neutrals (PLAN 5.3). 2: the fold now has 40 cases (the order above). 5: the gate domain loads the 11 1-cells and each gate file checks their path cases (open point 1). 6: the new example has a golden (D1). 8: L3 and L4 depend on the replace of attrSet; in S6 they are closed-world rows only.
+9. R1 to R4 (a `List` eliminator or `W` as a list cell; `natEq n n`; the propagation of `refUnknown`; the `textEq` rule): the slice S6R, each route with a probe before code.
+10. S5 open point 9 and the S5 mutants U1 to U10 stay as they are (cofamily sites).
+
+### Mutants (K8)
+
+The runner ~/Documents/virtu-lang-work/s6-build/s6-mut.zsh (outside the repo) has the form of the S6 kickoff runner s6k-mut.zsh. Scratch: s6-build/mscratch, an rsync of the main checkout with no .git and no build; logs: s6-build/mout; output: s6-build/s6-mut.log. src/ does not change in S6, thus the sites are the sites of the S6 kickoff (S6-kickoff.md e2). The base build (build/langc and build/path-regressions) has make rc 0 and 255 path regressions with 0 failed. For each mutant: the anchor has exactly 1 match, `sd -F`, `make -B -j 2` with rc 0, the killer on the base binary and then on the mutant binary, the restore, and cmp with the main checkout (rc 0 for each). After the last restore: make rc 0, 255 path regressions with 0 failed, and check.c, eval.c and json.c are equal to the main checkout. Result: 5 of 7 KILLED; W3 and W6 SURVIVED.
+
+| id | site | mutation | killer | base | mutant | result |
+|---|---|---|---|---|---|---|
+| W1 | src/front/check.c:1397 path_case_type | `val_iend(m, side)` to `val_iend(m, 0)` in `case_image(...)` | test/check/law-false-refl.lang | rc 1 PATH_END: "mzRunA: the path at i1 is fun s => r (natAdd b (natAdd a s)), but the type needs fun s => r (natAdd b s)" | rc 0 | KILLED |
+| W2 | check.c:1424 the fold_family selector | `interval_count == 0u ?` to `interval_count == 1u ?` | examples/virt-laws.lang (each gate file that loads the domain) | rc 0 | rc 1 HIT_BOUNDARY: "toOption: a fold of noneC, a constructor with 0 interval fields, is not in S4" | KILLED |
+| W3 | check.c:1273 fold_image | `v->inst - base >= done)` to `v->inst - base > done)` | s6k-mutk/k3.lang (a 1-cell that names itself), s6k-mutk/k3b.lang (a 1-cell that names a later 0-cell), s6-build/q4/cycle.lang (open point 5) | k3 rc 1 NAME_UNKNOWN; k3b rc 0; cycle rc 1 NAME_UNKNOWN | the same three results | SURVIVED (likely equivalent) |
+| W4 | check.c:3785 check_ctor | `if (points < ctor->field_count && ctor->boundary == NULL)` to `if (0 && ...)` | test/check/law-no-boundary.lang | rc 1 HIT_BOUNDARY: "MzCC: the path constructor mzCL needs a boundary [ ~i -> t0, i -> t1 ] after its interval fields" | rc 0 | KILLED |
+| W5 | src/front/eval.c:1013 the path case of fold_family | `acc = fold_path(m, family, cases, ncases, x, acc);` to `acc = (0 && acc != NULL) ? fold_path(...) : acc;` | build/path-regressions; `langc check` of s6-build/rows/18-k5b.lang, 19-k5d.lang, 20-run2.lang | 255 checked, 0 failed; the three rows rc 0 | 10 of 255 failed, with the 3 two-dimensional S6 rows; the three rows rc 1 INTERNAL: "the evaluator found an application of a value that is not a function" | KILLED |
+| W6 | check.c:905 path_value_ok | `if (v == NULL \|\| !conv_values(m, level, v, e->args[side]))` to `if (v == NULL)` | s6k-mutk/k6.lang, s6k-mutk/k1.lang, test/check/law-false-refl.lang | rc 1 PATH_END (each) | the same three messages | SURVIVED (equivalent) |
+| W7 | src/json.c:996 world_json | `if (!is_virt_unit(m, d->type)) {` to `if (0) {` | `langc build test/emit/law-path-main.lang` | rc 1 JSON_MAIN_TYPE: "main: main has the type PathP (fun _ => Nat) 0 0, not Virt Unit" | rc 1 INTERNAL: "main: the evaluator found a fold of a value that is not in the family" | KILLED |
+
+Notes:
+
+- W3: `v->inst - base == done` is true only when a boundary term of the constructor at slot `done` names that constructor, and the name of a constructor is not in scope in its own boundary (k3.lang). A boundary cannot name a later 1-cell (open point 5), and a later 0-cell gets past `check` when no fold runs (F11, open point 7). Thus W3 is likely an equivalent mutant. This is not proven.
+- W5: the 7 other rows that fail on the mutant are older fold rows: "Glue endpoint substitution preserves interval connections", "fold boundary maps a point constructor continuation", "fold boundary maps a point constructor path field", "map through a path cell at a variable interval round-trips", "cell map preserves earlier path and square boundary cases", "cell bind preserves earlier path and square boundary cases", "cong at i1 of a fold with a neutral path case reads the i1 end".
+- W6: path_value_ok has one caller, rebuild_ok (check.c:927), and the case that it checks is cell_rebuild (check.c:942), which the kernel writes. The PATH_END of the three killers comes from end_fail (check.c:472) by another caller. Thus W6 is an equivalent mutant at a correct cell_rebuild (the class of S5 U2).

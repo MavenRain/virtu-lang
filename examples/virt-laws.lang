@@ -1,0 +1,16 @@
+-- The L5 laws of Virt (S6, PLAN 5.3): two reads of one value give one
+-- value. Each law is a 1-cell of Virt, and its case in run is refl. main
+-- uses the law rrBal at i0; at i1 the JSON output is the same.
+def lawsK : VirtuCard -> Prod Credits Credits -> Virt Unit :=
+  fun (c : VirtuCard) (p : Prod Credits Credits) => credit Unit c (creditsAdd (first p) (second p)) (pure unit)
+def lawsPath : (c : VirtuCard) -> Path (Virt Unit) (cardBalance Unit c (fun (x : Credits) => cardBalance Unit c (fun (y : Credits) => lawsK c (pair x y)))) (cardBalance Unit c (fun (x : Credits) => lawsK c (pair x x))) :=
+  fun (c : VirtuCard) => fun (i : I) => rrBal Unit c (lawsK c) i
+def lawsRun : (c : VirtuCard) -> (w : W) -> Path (Prod W Unit) (run Unit (cardBalance Unit c (fun (x : Credits) => cardBalance Unit c (fun (y : Credits) => lawsK c (pair x y)))) w) (run Unit (cardBalance Unit c (fun (x : Credits) => lawsK c (pair x x))) w) :=
+  fun (c : VirtuCard) (w : W) => fun (i : I) => run Unit (rrBal Unit c (lawsK c) i) w
+-- The two ends of the law at a closed world give the same value.
+def readTwo : Credits := second (run Credits (avatar Credits "Ada" explorer (fun (a : Avatar) =>
+  createVirtucard Credits a 5 (fun (c : VirtuCard) => rrBal Credits c (fun (p : Prod Credits Credits) => pure (creditsAdd (first p) (second p))) i0))) nil)
+def readOne : Credits := second (run Credits (avatar Credits "Ada" explorer (fun (a : Avatar) =>
+  createVirtucard Credits a 5 (fun (c : VirtuCard) => rrBal Credits c (fun (p : Prod Credits Credits) => pure (creditsAdd (first p) (second p))) i1))) nil)
+def main : Virt Unit := avatar Unit "Ada" explorer (fun (a : Avatar) =>
+  createVirtucard Unit a 5 (fun (c : VirtuCard) => rrBal Unit c (lawsK c) i0))

@@ -1,0 +1,9 @@
+-- S6 K7: a refl path case at a false law (W1). mzAdd adds to the state, thus
+-- two adds are not one add, and the ends of the case differ (PATH_END).
+cell MzAC (X : Type 0) := mzAdd : (mzAddA : Nat) -> (mzAddT : X) -> X
+  | mzAddL : (mzAddLA : Nat) -> (mzAddLB : Nat) -> (mzAddLT : X) -> (i : I) -> X [ ~i -> mzAdd X mzAddLA (mzAdd X mzAddLB mzAddLT), i -> mzAdd X mzAddLB mzAddLT ]
+def mzRunA : MzAC Nat -> Nat -> Prod Nat Nat := fun (t : MzAC Nat) => fold
+  (fun (a : Nat) (r : Nat -> Prod Nat Nat) => fun (s : Nat) => r (natAdd a s))
+  (fun (a : Nat) (b : Nat) (r : Nat -> Prod Nat Nat) => refl)
+  (fun (v : Nat) => fun (s : Nat) => pair s v)
+  t

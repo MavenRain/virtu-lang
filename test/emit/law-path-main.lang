@@ -1,0 +1,2 @@
+-- S6 K7: a main of a Path type is not a program (W7, JSON_MAIN_TYPE).
+def main : Path Nat 0 0 := refl

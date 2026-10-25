@@ -123,3 +123,8 @@ string-control.lang LEX_STR_CONTROL
 credits-overflow.lang EVAL_CREDITS_OVERFLOW
 ref-unknown.lang EVAL_REF_UNKNOWN
 ref-unknown-type.lang TYPE_MISMATCH
+law-curried.lang CELL_POSITIVE
+law-false-refl.lang PATH_END
+law-no-case.lang TYPE_MISMATCH
+law-pure-boundary.lang TYPE_INFER
+law-no-boundary.lang HIT_BOUNDARY

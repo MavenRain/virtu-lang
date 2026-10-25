@@ -1,0 +1,8 @@
+-- S6 K7: a fold over a cell with a 1-cell and no case for it
+-- (TYPE_MISMATCH). The path case is the proof that the fold keeps the law.
+cell SecC (X : Type 0) := setS : (setSA : Nat) -> (setST : X) -> X
+  | ssC : (ssCA : Nat) -> (ssCB : Nat) -> (ssCT : X) -> (i : I) -> X [ ~i -> setS X ssCA (setS X ssCB ssCT), i -> setS X ssCB ssCT ]
+def runS : SecC Nat -> Nat -> Prod Nat Nat := fun (t : SecC Nat) => fold
+  (fun (a : Nat) (r : Nat -> Prod Nat Nat) => fun (s : Nat) => r a)
+  (fun (v : Nat) => fun (s : Nat) => pair s v)
+  t

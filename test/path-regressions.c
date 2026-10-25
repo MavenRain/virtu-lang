@@ -1344,6 +1344,109 @@ int main(void) {
     "def r : (n : Nat) -> Path Nat (refUnknown Nat n) (refUnknown Nat n) := fun n => refl\n");
   failed += !domain_refuses("reference: refUnknown takes A : Type 0 only", "",
     "def z : Type 0 := refUnknown (Type 0) 3\n", "TYPE_MISMATCH");
+  failed += !accepts("law L5 rrName: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : Avatar) -> (f : Prod (Text) (Text) -> Virt X) -> Path (Virt X) (avatarName X a (fun (x : Text) => avatarName X a (fun (y : Text) => f (pair x y)))) (avatarName X a (fun (x : Text) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : Avatar) (f : Prod (Text) (Text) -> Virt X) => fun (i : I) => rrName X a f i\n"
+    "def lzRun : (X : Type 0) -> (a : Avatar) -> (f : Prod (Text) (Text) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (avatarName X a (fun (x : Text) => avatarName X a (fun (y : Text) => f (pair x y)))) w) (run X (avatarName X a (fun (x : Text) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : Avatar) (f : Prod (Text) (Text) -> Virt X) (w : W) => fun (i : I) => run X (rrName X a f i) w\n");
+  failed += !accepts("law L5 rrRole: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : Avatar) -> (f : Prod (Role) (Role) -> Virt X) -> Path (Virt X) (avatarRole X a (fun (x : Role) => avatarRole X a (fun (y : Role) => f (pair x y)))) (avatarRole X a (fun (x : Role) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : Avatar) (f : Prod (Role) (Role) -> Virt X) => fun (i : I) => rrRole X a f i\n"
+    "def lzRun : (X : Type 0) -> (a : Avatar) -> (f : Prod (Role) (Role) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (avatarRole X a (fun (x : Role) => avatarRole X a (fun (y : Role) => f (pair x y)))) w) (run X (avatarRole X a (fun (x : Role) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : Avatar) (f : Prod (Role) (Role) -> Virt X) (w : W) => fun (i : I) => run X (rrRole X a f i) w\n");
+  failed += !accepts("law L5 rrCard: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : Avatar) -> (f : Prod (Option VirtuCard) (Option VirtuCard) -> Virt X) -> Path (Virt X) (avatarCard X a (fun (x : Option VirtuCard) => avatarCard X a (fun (y : Option VirtuCard) => f (pair x y)))) (avatarCard X a (fun (x : Option VirtuCard) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : Avatar) (f : Prod (Option VirtuCard) (Option VirtuCard) -> Virt X) => fun (i : I) => rrCard X a f i\n"
+    "def lzRun : (X : Type 0) -> (a : Avatar) -> (f : Prod (Option VirtuCard) (Option VirtuCard) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (avatarCard X a (fun (x : Option VirtuCard) => avatarCard X a (fun (y : Option VirtuCard) => f (pair x y)))) w) (run X (avatarCard X a (fun (x : Option VirtuCard) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : Avatar) (f : Prod (Option VirtuCard) (Option VirtuCard) -> Virt X) (w : W) => fun (i : I) => run X (rrCard X a f i) w\n");
+  failed += !accepts("law L5 rrGet: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : Avatar) -> (k : Text) -> (f : Prod (Option Value) (Option Value) -> Virt X) -> Path (Virt X) (avatarGet X a k (fun (x : Option Value) => avatarGet X a k (fun (y : Option Value) => f (pair x y)))) (avatarGet X a k (fun (x : Option Value) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : Avatar) (k : Text) (f : Prod (Option Value) (Option Value) -> Virt X) => fun (i : I) => rrGet X a k f i\n"
+    "def lzRun : (X : Type 0) -> (a : Avatar) -> (k : Text) -> (f : Prod (Option Value) (Option Value) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (avatarGet X a k (fun (x : Option Value) => avatarGet X a k (fun (y : Option Value) => f (pair x y)))) w) (run X (avatarGet X a k (fun (x : Option Value) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : Avatar) (k : Text) (f : Prod (Option Value) (Option Value) -> Virt X) (w : W) => fun (i : I) => run X (rrGet X a k f i) w\n");
+  failed += !accepts("law L5 rrInv: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : Avatar) -> (f : Prod (List VirtualItem) (List VirtualItem) -> Virt X) -> Path (Virt X) (avatarInventory X a (fun (x : List VirtualItem) => avatarInventory X a (fun (y : List VirtualItem) => f (pair x y)))) (avatarInventory X a (fun (x : List VirtualItem) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : Avatar) (f : Prod (List VirtualItem) (List VirtualItem) -> Virt X) => fun (i : I) => rrInv X a f i\n"
+    "def lzRun : (X : Type 0) -> (a : Avatar) -> (f : Prod (List VirtualItem) (List VirtualItem) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (avatarInventory X a (fun (x : List VirtualItem) => avatarInventory X a (fun (y : List VirtualItem) => f (pair x y)))) w) (run X (avatarInventory X a (fun (x : List VirtualItem) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : Avatar) (f : Prod (List VirtualItem) (List VirtualItem) -> Virt X) (w : W) => fun (i : I) => run X (rrInv X a f i) w\n");
+  failed += !accepts("law L5 rrBal: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : VirtuCard) -> (f : Prod (Credits) (Credits) -> Virt X) -> Path (Virt X) (cardBalance X a (fun (x : Credits) => cardBalance X a (fun (y : Credits) => f (pair x y)))) (cardBalance X a (fun (x : Credits) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : VirtuCard) (f : Prod (Credits) (Credits) -> Virt X) => fun (i : I) => rrBal X a f i\n"
+    "def lzRun : (X : Type 0) -> (a : VirtuCard) -> (f : Prod (Credits) (Credits) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (cardBalance X a (fun (x : Credits) => cardBalance X a (fun (y : Credits) => f (pair x y)))) w) (run X (cardBalance X a (fun (x : Credits) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : VirtuCard) (f : Prod (Credits) (Credits) -> Virt X) (w : W) => fun (i : I) => run X (rrBal X a f i) w\n");
+  failed += !accepts("law L5 rrSec: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : VirtuCard) -> (f : Prod (SecurityLevel) (SecurityLevel) -> Virt X) -> Path (Virt X) (cardSecurity X a (fun (x : SecurityLevel) => cardSecurity X a (fun (y : SecurityLevel) => f (pair x y)))) (cardSecurity X a (fun (x : SecurityLevel) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : VirtuCard) (f : Prod (SecurityLevel) (SecurityLevel) -> Virt X) => fun (i : I) => rrSec X a f i\n"
+    "def lzRun : (X : Type 0) -> (a : VirtuCard) -> (f : Prod (SecurityLevel) (SecurityLevel) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (cardSecurity X a (fun (x : SecurityLevel) => cardSecurity X a (fun (y : SecurityLevel) => f (pair x y)))) w) (run X (cardSecurity X a (fun (x : SecurityLevel) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : VirtuCard) (f : Prod (SecurityLevel) (SecurityLevel) -> Virt X) (w : W) => fun (i : I) => run X (rrSec X a f i) w\n");
+  failed += !accepts("law L5 rrHist: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : VirtuCard) -> (f : Prod (List Entry) (List Entry) -> Virt X) -> Path (Virt X) (cardHistory X a (fun (x : List Entry) => cardHistory X a (fun (y : List Entry) => f (pair x y)))) (cardHistory X a (fun (x : List Entry) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : VirtuCard) (f : Prod (List Entry) (List Entry) -> Virt X) => fun (i : I) => rrHist X a f i\n"
+    "def lzRun : (X : Type 0) -> (a : VirtuCard) -> (f : Prod (List Entry) (List Entry) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (cardHistory X a (fun (x : List Entry) => cardHistory X a (fun (y : List Entry) => f (pair x y)))) w) (run X (cardHistory X a (fun (x : List Entry) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : VirtuCard) (f : Prod (List Entry) (List Entry) -> Virt X) (w : W) => fun (i : I) => run X (rrHist X a f i) w\n");
+  failed += !accepts("law L5 rrTInv: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : VirtualTerminal) -> (f : Prod (List Listing) (List Listing) -> Virt X) -> Path (Virt X) (terminalInventory X a (fun (x : List Listing) => terminalInventory X a (fun (y : List Listing) => f (pair x y)))) (terminalInventory X a (fun (x : List Listing) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : VirtualTerminal) (f : Prod (List Listing) (List Listing) -> Virt X) => fun (i : I) => rrTInv X a f i\n"
+    "def lzRun : (X : Type 0) -> (a : VirtualTerminal) -> (f : Prod (List Listing) (List Listing) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (terminalInventory X a (fun (x : List Listing) => terminalInventory X a (fun (y : List Listing) => f (pair x y)))) w) (run X (terminalInventory X a (fun (x : List Listing) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : VirtualTerminal) (f : Prod (List Listing) (List Listing) -> Virt X) (w : W) => fun (i : I) => run X (rrTInv X a f i) w\n");
+  failed += !accepts("law L5 rrVal: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : VirtualItem) -> (f : Prod (Credits) (Credits) -> Virt X) -> Path (Virt X) (itemValue X a (fun (x : Credits) => itemValue X a (fun (y : Credits) => f (pair x y)))) (itemValue X a (fun (x : Credits) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : VirtualItem) (f : Prod (Credits) (Credits) -> Virt X) => fun (i : I) => rrVal X a f i\n"
+    "def lzRun : (X : Type 0) -> (a : VirtualItem) -> (f : Prod (Credits) (Credits) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (itemValue X a (fun (x : Credits) => itemValue X a (fun (y : Credits) => f (pair x y)))) w) (run X (itemValue X a (fun (x : Credits) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : VirtualItem) (f : Prod (Credits) (Credits) -> Virt X) (w : W) => fun (i : I) => run X (rrVal X a f i) w\n");
+  failed += !accepts("law L5 rrIGet: the law in Virt and its runner path at a variable world (S6)",
+    "def lzLaw : (X : Type 0) -> (a : VirtualItem) -> (k : Text) -> (f : Prod (Option Value) (Option Value) -> Virt X) -> Path (Virt X) (itemGet X a k (fun (x : Option Value) => itemGet X a k (fun (y : Option Value) => f (pair x y)))) (itemGet X a k (fun (x : Option Value) => f (pair x x))) :=\n"
+    "  fun (X : Type 0) (a : VirtualItem) (k : Text) (f : Prod (Option Value) (Option Value) -> Virt X) => fun (i : I) => rrIGet X a k f i\n"
+    "def lzRun : (X : Type 0) -> (a : VirtualItem) -> (k : Text) -> (f : Prod (Option Value) (Option Value) -> Virt X) -> (w : W) -> Path (Prod W X) (run X (itemGet X a k (fun (x : Option Value) => itemGet X a k (fun (y : Option Value) => f (pair x y)))) w) (run X (itemGet X a k (fun (x : Option Value) => f (pair x x))) w) :=\n"
+    "  fun (X : Type 0) (a : VirtualItem) (k : Text) (f : Prod (Option Value) (Option Value) -> Virt X) (w : W) => fun (i : I) => run X (rrIGet X a k f i) w\n");
+  failed += !accepts("law L1 at a closed world, setSecurity (S6)",
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzL1c : (l : SecurityLevel) -> (m : SecurityLevel) -> Path (Prod W Unit) (run Unit (setSecurity Unit (cardRef Empty 1) l (setSecurity Unit (cardRef Empty 1) m (pure unit))) pzW) (run Unit (setSecurity Unit (cardRef Empty 1) m (pure unit)) pzW) := fun (l : SecurityLevel) (m : SecurityLevel) => refl\n");
+  failed += !accepts("law L2 at a closed world, setRarity (S6)",
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzL2c : (r : Rarity) -> (s : Rarity) -> Path (Prod W Unit) (run Unit (setRarity Unit (itemRef Empty 2) r (setRarity Unit (itemRef Empty 2) s (pure unit))) pzW) (run Unit (setRarity Unit (itemRef Empty 2) s (pure unit)) pzW) := fun (r : Rarity) (s : Rarity) => refl\n");
+  failed += !accepts("law L3 at a closed world, avatarSet (S6)",
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzL3cLit : (v : Value) -> (u : Value) -> Path (Prod W Unit) (run Unit (avatarSet Unit (avatarRef Empty 0) \"g\" v (avatarSet Unit (avatarRef Empty 0) \"g\" u (pure unit))) pzW) (run Unit (avatarSet Unit (avatarRef Empty 0) \"g\" u (pure unit)) pzW) := fun (v : Value) (u : Value) => refl\n");
+  failed += !accepts("law L3 at a closed world, itemSet (S6)",
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzL3cItem : (v : Value) -> (u : Value) -> Path (Prod W Unit) (run Unit (itemSet Unit (itemRef Empty 2) \"g\" v (itemSet Unit (itemRef Empty 2) \"g\" u (pure unit))) pzW) (run Unit (itemSet Unit (itemRef Empty 2) \"g\" u (pure unit)) pzW) := fun (v : Value) (u : Value) => refl\n");
+  failed += !accepts("law L4 at a closed world, avatarSet (S6)",
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzL4cLit : (v : Value) -> (f : Option Value -> Virt Unit) -> Path (Prod W Unit) (run Unit (avatarSet Unit (avatarRef Empty 0) \"g\" v (avatarGet Unit (avatarRef Empty 0) \"g\" f)) pzW) (run Unit (avatarSet Unit (avatarRef Empty 0) \"g\" v (f (some v))) pzW) := fun (v : Value) (f : Option Value -> Virt Unit) => refl\n");
+  failed += !accepts("law L4 at a closed world, itemSet (S6)",
+    "def pzW : W := first (run Unit (avatar Unit \"Ada\" explorer (fun (a : Avatar) => createVirtucard Unit a 5 (fun (c : VirtuCard) => item Unit \"Lamp\" \"tools\" 3 (fun (z : VirtualItem) => pure unit)))) nil)\n"
+    "def pzL4cItem : (v : Value) -> (f : Option Value -> Virt Unit) -> Path (Prod W Unit) (run Unit (itemSet Unit (itemRef Empty 2) \"g\" v (itemGet Unit (itemRef Empty 2) \"g\" f)) pzW) (run Unit (itemSet Unit (itemRef Empty 2) \"g\" v (f (some v))) pzW) := fun (v : Value) (f : Option Value -> Virt Unit) => refl\n");
+  failed += !accepts("law 2-dim: the fold path case at an inner point, variable t (S6 W5)",
+    "cell SecC (X : Type 0) := setS : (setSA : Nat) -> (setST : X) -> X\n"
+    "  | ssC : (ssCA : Nat) -> (ssCB : Nat) -> (ssCT : X) -> (i : I) -> X [ ~i -> setS X ssCA (setS X ssCB ssCT), i -> setS X ssCB ssCT ]\n"
+    "def runS : SecC Nat -> Nat -> Prod Nat Nat := fun (t : SecC Nat) => fold\n"
+    "  (fun (a : Nat) (r : Nat -> Prod Nat Nat) => fun (s : Nat) => r a)\n"
+    "  (fun (a : Nat) (b : Nat) (r : Nat -> Prod Nat Nat) => refl)\n"
+    "  (fun (v : Nat) => fun (s : Nat) => pair s v)\n"
+    "  t\n"
+    "def lawS : (a : Nat) -> (b : Nat) -> (t : SecC Nat) -> Path (SecC Nat) (setS Nat a (setS Nat b t)) (setS Nat b t) :=\n"
+    "  fun (a : Nat) (b : Nat) (t : SecC Nat) => fun (i : I) => ssC Nat a b t i\n"
+    "def lawRunS : (a : Nat) -> (b : Nat) -> (t : SecC Nat) -> (s : Nat) -> Path (Prod Nat Nat) (runS (setS Nat a (setS Nat b t)) s) (runS (setS Nat b t) s) :=\n"
+    "  fun (a : Nat) (b : Nat) (t : SecC Nat) (s : Nat) => fun (i : I) => runS (ssC Nat a b t i) s\n"
+    "def mzK5 : (t : SecC Nat) -> Path (Path (Prod Nat Nat) (runS (setS Nat 1 (setS Nat 2 t)) 0) (runS (setS Nat 2 t) 0)) (fun (i : I) => runS (ssC Nat 1 2 t i) 0) (fun (i : I) => runS (setS Nat 2 t) 0) :=\n"
+    "  fun (t : SecC Nat) => refl\n");
+  failed += !accepts("law 2-dim: the fold path case at an inner point, closed t (S6 W5)",
+    "cell SecC (X : Type 0) := setS : (setSA : Nat) -> (setST : X) -> X\n"
+    "  | ssC : (ssCA : Nat) -> (ssCB : Nat) -> (ssCT : X) -> (i : I) -> X [ ~i -> setS X ssCA (setS X ssCB ssCT), i -> setS X ssCB ssCT ]\n"
+    "def runS : SecC Nat -> Nat -> Prod Nat Nat := fun (t : SecC Nat) => fold\n"
+    "  (fun (a : Nat) (r : Nat -> Prod Nat Nat) => fun (s : Nat) => r a)\n"
+    "  (fun (a : Nat) (b : Nat) (r : Nat -> Prod Nat Nat) => refl)\n"
+    "  (fun (v : Nat) => fun (s : Nat) => pair s v)\n"
+    "  t\n"
+    "def lawS : (a : Nat) -> (b : Nat) -> (t : SecC Nat) -> Path (SecC Nat) (setS Nat a (setS Nat b t)) (setS Nat b t) :=\n"
+    "  fun (a : Nat) (b : Nat) (t : SecC Nat) => fun (i : I) => ssC Nat a b t i\n"
+    "def lawRunS : (a : Nat) -> (b : Nat) -> (t : SecC Nat) -> (s : Nat) -> Path (Prod Nat Nat) (runS (setS Nat a (setS Nat b t)) s) (runS (setS Nat b t) s) :=\n"
+    "  fun (a : Nat) (b : Nat) (t : SecC Nat) (s : Nat) => fun (i : I) => runS (ssC Nat a b t i) s\n"
+    "def mzK5d : Path (Path (Prod Nat Nat) (pair 2 5) (pair 2 5)) (fun (i : I) => runS (ssC Nat 1 2 (pure 5) i) 0) (fun (i : I) => pair 2 5) := refl\n");
+  failed += !accepts("law L5 2-dim: run of rrBal at an inner point (S6)",
+    "def lz2 : (c : VirtuCard) -> (f : Prod Credits Credits -> Virt Unit) -> (w : W) -> Path (Path (Prod W Unit) (run Unit (cardBalance Unit c (fun (x : Credits) => cardBalance Unit c (fun (y : Credits) => f (pair x y)))) w) (run Unit (cardBalance Unit c (fun (x : Credits) => f (pair x x))) w)) (fun (i : I) => run Unit (rrBal Unit c f i) w) (fun (i : I) => run Unit (cardBalance Unit c (fun (x : Credits) => f (pair x x))) w) :=\n"
+    "  fun (c : VirtuCard) (f : Prod Credits Credits -> Virt Unit) (w : W) => refl\n");
   printf("path regressions: %d checked, %d failed\n", cases_run, failed);
   return failed != 0;
 }

@@ -208,3 +208,5 @@ carriers rarityCode => 3
 carriers rarityBack => 4
 carriers kindCode => 6
 carriers kindBack => 4
+virt-laws readTwo => 10
+virt-laws readOne => 10

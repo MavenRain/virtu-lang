@@ -1,0 +1,6 @@
+-- S6 K7: pure in a boundary. A boundary slot has the carrier type X, not a
+-- cell type, thus pure has no declared type there (TYPE_INFER). L4 uses the
+-- continuation form for this reason (PLAN 5.3).
+cell LzPC (X : Type 0) := lzPS : (lzPSA : Nat) -> (lzPST : X) -> X
+  | lzPL : (lzPLA : Nat) -> (i : I) -> X [ ~i -> lzPS X lzPLA (pure lzPLA), i -> pure lzPLA ]
+def lzRunP : LzPC Nat -> Nat := fun (t : LzPC Nat) => fold (fun (a : Nat) (r : Nat) => r) (fun (a : Nat) => refl) (fun (v : Nat) => v) t

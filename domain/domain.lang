@@ -355,7 +355,9 @@ def purchaseIn : W -> VirtualTerminal -> Avatar -> Text -> VirtuCard -> Option (
       (listingFind s n))) (avatarCheck w u) (cardCheck w c)
 -- Virt (K3): one 0-cell for each operation of PLAN 5.1, in row order. An
 -- op with the result R has a field R -> X; an op with the result Unit has
--- a field X.
+-- a field X. The 1-cells after itemGet are the L5 laws of PLAN 5.3 (S6
+-- K3), one for each read row in row order: two reads give one value. The
+-- continuation of a law takes the pair of the two reads (S6 K1).
 cell Virt (X : Type 0) := avatar : Text -> Role -> (Avatar -> X) -> X
   | avatarName : Avatar -> (Text -> X) -> X
   | avatarRole : Avatar -> (Role -> X) -> X
@@ -384,8 +386,22 @@ cell Virt (X : Type 0) := avatar : Text -> Role -> (Avatar -> X) -> X
   | itemValue : VirtualItem -> (Credits -> X) -> X
   | itemSet : VirtualItem -> Text -> Value -> X -> X
   | itemGet : VirtualItem -> Text -> (Option Value -> X) -> X
+  | rrName : (rrNameA : Avatar) -> (rrNameF : Prod Text Text -> X) -> (i : I) -> X [ ~i -> avatarName X rrNameA (fun (x : Text) => avatarName X rrNameA (fun (y : Text) => rrNameF (pair x y))), i -> avatarName X rrNameA (fun (x : Text) => rrNameF (pair x x)) ]
+  | rrRole : (rrRoleA : Avatar) -> (rrRoleF : Prod Role Role -> X) -> (i : I) -> X [ ~i -> avatarRole X rrRoleA (fun (x : Role) => avatarRole X rrRoleA (fun (y : Role) => rrRoleF (pair x y))), i -> avatarRole X rrRoleA (fun (x : Role) => rrRoleF (pair x x)) ]
+  | rrCard : (rrCardA : Avatar) -> (rrCardF : Prod (Option VirtuCard) (Option VirtuCard) -> X) -> (i : I) -> X [ ~i -> avatarCard X rrCardA (fun (x : Option VirtuCard) => avatarCard X rrCardA (fun (y : Option VirtuCard) => rrCardF (pair x y))), i -> avatarCard X rrCardA (fun (x : Option VirtuCard) => rrCardF (pair x x)) ]
+  | rrGet : (rrGetA : Avatar) -> (rrGetK : Text) -> (rrGetF : Prod (Option Value) (Option Value) -> X) -> (i : I) -> X [ ~i -> avatarGet X rrGetA rrGetK (fun (x : Option Value) => avatarGet X rrGetA rrGetK (fun (y : Option Value) => rrGetF (pair x y))), i -> avatarGet X rrGetA rrGetK (fun (x : Option Value) => rrGetF (pair x x)) ]
+  | rrInv : (rrInvA : Avatar) -> (rrInvF : Prod (List VirtualItem) (List VirtualItem) -> X) -> (i : I) -> X [ ~i -> avatarInventory X rrInvA (fun (x : List VirtualItem) => avatarInventory X rrInvA (fun (y : List VirtualItem) => rrInvF (pair x y))), i -> avatarInventory X rrInvA (fun (x : List VirtualItem) => rrInvF (pair x x)) ]
+  | rrBal : (rrBalC : VirtuCard) -> (rrBalF : Prod Credits Credits -> X) -> (i : I) -> X [ ~i -> cardBalance X rrBalC (fun (x : Credits) => cardBalance X rrBalC (fun (y : Credits) => rrBalF (pair x y))), i -> cardBalance X rrBalC (fun (x : Credits) => rrBalF (pair x x)) ]
+  | rrSec : (rrSecC : VirtuCard) -> (rrSecF : Prod SecurityLevel SecurityLevel -> X) -> (i : I) -> X [ ~i -> cardSecurity X rrSecC (fun (x : SecurityLevel) => cardSecurity X rrSecC (fun (y : SecurityLevel) => rrSecF (pair x y))), i -> cardSecurity X rrSecC (fun (x : SecurityLevel) => rrSecF (pair x x)) ]
+  | rrHist : (rrHistC : VirtuCard) -> (rrHistF : Prod (List Entry) (List Entry) -> X) -> (i : I) -> X [ ~i -> cardHistory X rrHistC (fun (x : List Entry) => cardHistory X rrHistC (fun (y : List Entry) => rrHistF (pair x y))), i -> cardHistory X rrHistC (fun (x : List Entry) => rrHistF (pair x x)) ]
+  | rrTInv : (rrTInvT : VirtualTerminal) -> (rrTInvF : Prod (List Listing) (List Listing) -> X) -> (i : I) -> X [ ~i -> terminalInventory X rrTInvT (fun (x : List Listing) => terminalInventory X rrTInvT (fun (y : List Listing) => rrTInvF (pair x y))), i -> terminalInventory X rrTInvT (fun (x : List Listing) => rrTInvF (pair x x)) ]
+  | rrVal : (rrValZ : VirtualItem) -> (rrValF : Prod Credits Credits -> X) -> (i : I) -> X [ ~i -> itemValue X rrValZ (fun (x : Credits) => itemValue X rrValZ (fun (y : Credits) => rrValF (pair x y))), i -> itemValue X rrValZ (fun (x : Credits) => rrValF (pair x x)) ]
+  | rrIGet : (rrIGetZ : VirtualItem) -> (rrIGetK : Text) -> (rrIGetF : Prod (Option Value) (Option Value) -> X) -> (i : I) -> X [ ~i -> itemGet X rrIGetZ rrIGetK (fun (x : Option Value) => itemGet X rrIGetZ rrIGetK (fun (y : Option Value) => rrIGetF (pair x y))), i -> itemGet X rrIGetZ rrIGetK (fun (x : Option Value) => rrIGetF (pair x x)) ]
 -- run (K5): the fold of a program into a function of the world. A new
--- instance goes at the end of W. The 1-cell cases come in S6.
+-- instance goes at the end of W. The fold has 40 cases: the 28 0-cells in
+-- PLAN 5.1 row order, the 11 L5 laws in read row order, then pure. The
+-- case of each law is refl: a read does not change the world, thus the two
+-- ends of the law run to convertible functions of the world (S6 K4).
 def run : (X : Type 0) -> Virt X -> W -> Prod W X :=
   fun (X : Type 0) (t : Virt X) => fold
     (fun (n : Text) (r : Role) (k : Avatar -> W -> Prod W X) => fun (w : W) =>
@@ -445,5 +461,16 @@ def run : (X : Type 0) -> Virt X -> W -> Prod W X :=
       k (itemPut w z (fun (n : Text) (b : Text) (v : Credits) (r : Rarity) (s : Attributes) => itemI Empty n b v r (attrSet s y e))))
     (fun (z : VirtualItem) (y : Text) (k : Option Value -> W -> Prod W X) => fun (w : W) =>
       k (withItem (Option Value) w z (fun (n : Text) (b : Text) (v : Credits) (r : Rarity) (s : Attributes) => attrGet s y)) w)
+    (fun (a : Avatar) (f : Prod Text Text -> W -> Prod W X) => refl)
+    (fun (a : Avatar) (f : Prod Role Role -> W -> Prod W X) => refl)
+    (fun (a : Avatar) (f : Prod (Option VirtuCard) (Option VirtuCard) -> W -> Prod W X) => refl)
+    (fun (a : Avatar) (y : Text) (f : Prod (Option Value) (Option Value) -> W -> Prod W X) => refl)
+    (fun (a : Avatar) (f : Prod (List VirtualItem) (List VirtualItem) -> W -> Prod W X) => refl)
+    (fun (c : VirtuCard) (f : Prod Credits Credits -> W -> Prod W X) => refl)
+    (fun (c : VirtuCard) (f : Prod SecurityLevel SecurityLevel -> W -> Prod W X) => refl)
+    (fun (c : VirtuCard) (f : Prod (List Entry) (List Entry) -> W -> Prod W X) => refl)
+    (fun (t : VirtualTerminal) (f : Prod (List Listing) (List Listing) -> W -> Prod W X) => refl)
+    (fun (z : VirtualItem) (f : Prod Credits Credits -> W -> Prod W X) => refl)
+    (fun (z : VirtualItem) (y : Text) (f : Prod (Option Value) (Option Value) -> W -> Prod W X) => refl)
     (fun (v : X) => fun (w : W) => pair w v)
     t
